@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>실시간 주가 검색</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:#f4f6f8;color:#222}
+header{background:#1b2a4a;color:#fff;padding:18px 16px;text-align:center}
+header h1{margin:0;font-size:22px}
+header p{margin:6px 0 0;font-size:13px;color:#c9d3e8}
+main{max-width:560px;margin:0 auto;padding:16px}
+.search-box{display:flex;gap:8px;margin-bottom:14px}
+#q{flex:1;padding:12px 14px;font-size:16px;border:2px solid #d0d5dd;border-radius:10px}
+#q:focus{outline:none;border-color:#1b2a4a}
+#searchBtn{padding:12px 18px;font-size:15px;font-weight:bold;background:#1b2a4a;color:#fff;border:none;border-radius:10px;cursor:pointer}
+#searchBtn:active{background:#10182c}
+#status{font-size:13px;color:#888;min-height:18px;margin-bottom:8px}
+#results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;margin-bottom:18px}
+#results li{background:#fff;border:1px solid #e3e6eb;border-radius:10px;padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+#results li:hover{border-color:#1b2a4a}
+#results .name{font-weight:bold}
+#results .code{font-size:12px;color:#888}
+#results .market{font-size:11px;background:#eef1f7;color:#445;border-radius:6px;padding:2px 7px}
+#detail{display:none;background:#fff;border-radius:14px;padding:18px;border:1px solid #e3e6eb}
+#detail h2{margin:0 0 4px;font-size:20px}
+#detail .meta{font-size:12px;color:#888;margin-bottom:14px}
+#detail .price-row{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+#detail .price{font-size:34px;font-weight:bold}
+#detail .change{font-size:16px;font-weight:bold}
+.up{color:#d32f2f}
+.down{color:#1565c0}
+.flat{color:#666}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.grid div{background:#f7f8fa;border-radius:8px;padding:8px 10px;font-size:13px}
+.grid span{display:block;color:#888;font-size:11px;margin-bottom:2px}
+#refreshNote{font-size:12px;color:#999;margin-top:12px;text-align:right}
+.empty{color:#999;font-size:13px;text-align:center;padding:20px 0}
+footer{text-align:center;font-size:11px;color:#aaa;padding:20px 0}
+</style>
+</head>
+<body>
+<header>
+<h1>실시간 주가 검색</h1>
+<p>전체 종목을 검색하고 원하는 종목의 실시간 시세를 확인하세요</p>
+</header>
+<main>
+<div class="search-box">
+<input id="q" type="text" placeholder="종목명 또는 코드 입력 (예: 삼성전자)" autocomplete="off">
+<button id="searchBtn">검색</button>
+</div>
+<div id="status"></div>
+<ul id="results"></ul>
+
+<div id="detail">
+<h2 id="dName">-</h2>
+<div class="meta" id="dMeta">-</div>
+<div class="price-row">
+<div class="price" id="dPrice">-</div>
+<div class="change" id="dChange">-</div>
+</div>
+<div class="grid">
+<div><span>시가</span><b id="dOpen">-</b></div>
+<div><span>고가</span><b id="dHigh">-</b></div>
+<div><span>저가</span><b id="dLow">-</b></div>
+<div><span>거래량</span><b id="dVolume">-</b></div>
+</div>
+<div id="refreshNote">자동 갱신: 5초마다 · 마지막 업데이트 <span id="dTime">-</span></div>
+</div>
+</main>
+<footer>데이터 제공: 네이버 금융 (공개 CORS 프록시 경유, 지연/오차 가능)</footer>
+
+<script>
+const PROXY = url => 'https://corsproxy.io/?url=' + encodeURIComponent(url);
+const q = document.getElementById('q');
+const searchBtn = document.getElementById('searchBtn');
+const statusEl = document.getElementById('status');
+const resultsEl = document.getElementById('results');
+const detailEl = document.getElementById('detail');
+
+let refreshTimer = null;
+let currentCode = null;
+
+async function searchStocks(keyword){
+  statusEl.textContent = '검색 중...';
+  resultsEl.innerHTML = '';
+  try{
+    const url = `https://ac.finance.naver.com/ac?q=${encodeURIComponent(keyword)}&q_enc=UTF-8&st=111&frm=stock&r_format=json&r_enc=UTF-8&r_unicode=0&t_koreng=1&run=2`;
+    const res = await fetch(PROXY(url));
+    if(!res.ok) throw new Error('네트워크 오류 ' + res.status);
+    const data = await res.json();
+    const items = (data && data.items) ? data.items : [];
+    const stocks = [];
+    for(const item of items){
+      if(!Array.isArray(item) || item.length < 2) continue;
+      const nameGroup = item[0];
+      const marketGroup = item[1];
+      if(!Array.isArray(nameGroup)) continue;
+      const name = nameGroup[0];
+      const code = nameGroup[1];
+      const market = Array.isArray(marketGroup) ? marketGroup[0] : '';
+      if(name && code && /^[0-9]{5,6}$/.test(code)){
+        stocks.push({name, code, market});
+      }
+    }
+    if(stocks.length === 0){
+      resultsEl.innerHTML = '<li class="empty" style="cursor:default">검색 결과가 없습니다</li>';
+      statusEl.textContent = '';
+      return;
+    }
+    resultsEl.innerHTML = '';
+    stocks.forEach(s => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span><span class="name">${s.name}</span> <span class="code">${s.code}</span></span><span class="market">${s.market || ''}</span>`;
+      li.onclick = () => selectStock(s);
+      resultsEl.appendChild(li);
+    });
+    statusEl.textContent = `${stocks.length}개 결과`;
+  }catch(err){
+    statusEl.textContent = '검색에 실패했습니다 (CORS 프록시 또는 네트워크 문제): ' + err.message;
+  }
+}
+
+function fmtNum(v){
+  if(v === undefined || v === null || v === '') return '-';
+  const n = Number(v);
+  return isNaN(n) ? v : n.toLocaleString('ko-KR');
+}
+
+async function fetchPrice(code){
+  const url = `https://polling.finance.naver.com/api/realtime/domestic/stock/${code}`;
+  const res = await fetch(PROXY(url));
+  if(!res.ok) throw new Error('네트워크 오류 ' + res.status);
+  const data = await res.json();
+  const d = (data && data.resultData) ? (Array.isArray(data.resultData) ? data.resultData[0] : data.resultData) : null;
+  if(!d) throw new Error('시세 데이터 없음');
+  return d;
+}
+
+async function selectStock(stock){
+  currentCode = stock.code;
+  document.getElementById('dName').textContent = stock.name;
+  document.getElementById('dMeta').textContent = `${stock.code} · ${stock.market || ''}`;
+  detailEl.style.display = 'block';
+  await updatePrice();
+  if(refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(updatePrice, 5000);
+}
+
+async function updatePrice(){
+  if(!currentCode) return;
+  try{
+    const d = await fetchPrice(currentCode);
+    const price = d.closePrice ?? d.tradePrice ?? d.now ?? null;
+    const diff = d.compareToPreviousClosePrice ?? d.compareToPreviousPrice ?? null;
+    const ratio = d.fluctuationsRatio ?? d.changeRate ?? null;
+    const sign = d.compareToPreviousPriceSign ?? (Number(diff) > 0 ? '2' : Number(diff) < 0 ? '5' : '3');
+
+    document.getElementById('dPrice').textContent = fmtNum(price);
+    const changeEl = document.getElementById('dChange');
+    const diffNum = Number(diff) || 0;
+    const ratioNum = ratio !== null ? Number(ratio) : null;
+    let cls = 'flat', arrow = '';
+    if(diffNum > 0){ cls = 'up'; arrow = '▲'; }
+    else if(diffNum < 0){ cls = 'down'; arrow = '▼'; }
+    changeEl.className = 'change ' + cls;
+    changeEl.textContent = `${arrow} ${fmtNum(Math.abs(diffNum))} (${ratioNum !== null ? Math.abs(ratioNum).toFixed(2) : '-'}%)`;
+
+    document.getElementById('dOpen').textContent = fmtNum(d.openPrice);
+    document.getElementById('dHigh').textContent = fmtNum(d.highPrice);
+    document.getElementById('dLow').textContent = fmtNum(d.lowPrice);
+    document.getElementById('dVolume').textContent = fmtNum(d.accumulatedTradingVolume);
+    document.getElementById('dTime').textContent = new Date().toLocaleTimeString('ko-KR');
+  }catch(err){
+    document.getElementById('dTime').textContent = '갱신 실패 (' + err.message + ')';
+  }
+}
+
+searchBtn.onclick = () => {
+  const v = q.value.trim();
+  if(v) searchStocks(v);
+};
+q.addEventListener('keydown', e => {
+  if(e.key === 'Enter'){
+    const v = q.value.trim();
+    if(v) searchStocks(v);
+  }
+});
+</script>
+</body>
+</html>
