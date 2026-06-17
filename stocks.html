@@ -80,6 +80,12 @@ const PROXIES = [
 
 async function fetchViaProxies(url){
   let lastErr;
+  try{
+    const res = await fetch(url);
+    if(res.ok) return await res.json();
+  }catch(err){
+    lastErr = err;
+  }
   for(const proxy of PROXIES){
     try{
       const res = await fetch(proxy(url));
@@ -89,7 +95,34 @@ async function fetchViaProxies(url){
       lastErr = err;
     }
   }
-  throw lastErr || new Error('모든 프록시 실패');
+  throw lastErr || new Error('모든 경로 실패');
+}
+
+let jsonpCounter = 0;
+function fetchJSONP(url, callbackParam){
+  return new Promise((resolve, reject) => {
+    const cbName = '__jsonp_cb_' + (jsonpCounter++);
+    const script = document.createElement('script');
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('JSONP 타임아웃'));
+    }, 6000);
+    function cleanup(){
+      clearTimeout(timer);
+      delete window[cbName];
+      script.remove();
+    }
+    window[cbName] = data => {
+      cleanup();
+      resolve(data);
+    };
+    script.onerror = () => {
+      cleanup();
+      reject(new Error('JSONP 로드 실패'));
+    };
+    script.src = url + (url.includes('?') ? '&' : '?') + callbackParam + '=' + cbName;
+    document.head.appendChild(script);
+  });
 }
 const q = document.getElementById('q');
 const searchBtn = document.getElementById('searchBtn');
@@ -105,7 +138,12 @@ async function searchStocks(keyword){
   resultsEl.innerHTML = '';
   try{
     const url = `https://ac.finance.naver.com/ac?q=${encodeURIComponent(keyword)}&q_enc=UTF-8&st=111&frm=stock&r_format=json&r_enc=UTF-8&r_unicode=0&t_koreng=1&run=2`;
-    const data = await fetchViaProxies(url);
+    let data;
+    try{
+      data = await fetchJSONP(url, 'callback');
+    }catch(jsonpErr){
+      data = await fetchViaProxies(url);
+    }
     const items = (data && data.items) ? data.items : [];
     const stocks = [];
     for(const item of items){
@@ -134,7 +172,7 @@ async function searchStocks(keyword){
     });
     statusEl.textContent = `${stocks.length}개 결과`;
   }catch(err){
-    statusEl.textContent = '검색에 실패했습니다 (CORS 프록시 또는 네트워크 문제): ' + err.message;
+    statusEl.textContent = '검색에 실패했습니다: ' + err.message;
   }
 }
 
