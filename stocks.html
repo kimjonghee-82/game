@@ -72,7 +72,25 @@ footer{text-align:center;font-size:11px;color:#aaa;padding:20px 0}
 <footer>데이터 제공: 네이버 금융 (공개 CORS 프록시 경유, 지연/오차 가능)</footer>
 
 <script>
-const PROXY = url => 'https://corsproxy.io/?url=' + encodeURIComponent(url);
+const PROXIES = [
+  url => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+  url => 'https://corsproxy.io/?url=' + encodeURIComponent(url),
+  url => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url)
+];
+
+async function fetchViaProxies(url){
+  let lastErr;
+  for(const proxy of PROXIES){
+    try{
+      const res = await fetch(proxy(url));
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    }catch(err){
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('모든 프록시 실패');
+}
 const q = document.getElementById('q');
 const searchBtn = document.getElementById('searchBtn');
 const statusEl = document.getElementById('status');
@@ -87,9 +105,7 @@ async function searchStocks(keyword){
   resultsEl.innerHTML = '';
   try{
     const url = `https://ac.finance.naver.com/ac?q=${encodeURIComponent(keyword)}&q_enc=UTF-8&st=111&frm=stock&r_format=json&r_enc=UTF-8&r_unicode=0&t_koreng=1&run=2`;
-    const res = await fetch(PROXY(url));
-    if(!res.ok) throw new Error('네트워크 오류 ' + res.status);
-    const data = await res.json();
+    const data = await fetchViaProxies(url);
     const items = (data && data.items) ? data.items : [];
     const stocks = [];
     for(const item of items){
@@ -130,9 +146,7 @@ function fmtNum(v){
 
 async function fetchPrice(code){
   const url = `https://polling.finance.naver.com/api/realtime/domestic/stock/${code}`;
-  const res = await fetch(PROXY(url));
-  if(!res.ok) throw new Error('네트워크 오류 ' + res.status);
-  const data = await res.json();
+  const data = await fetchViaProxies(url);
   const d = (data && data.resultData) ? (Array.isArray(data.resultData) ? data.resultData[0] : data.resultData) : null;
   if(!d) throw new Error('시세 데이터 없음');
   return d;
