@@ -127,14 +127,14 @@ body{
 
 .fab-btn{
   display:flex;align-items:center;justify-content:center;
-  width:52px;height:52px;border-radius:50%;
-  background:var(--accent);color:#fff;font-size:26px;font-weight:bold;
+  width:62px;height:62px;border-radius:50%;
+  background:var(--accent);color:#fff;font-size:32px;font-weight:bold;
   border:none;cursor:pointer;box-shadow:0 6px 16px rgba(192,57,43,.4);
 }
 .fab-btn:active{background:var(--accent-dark)}
 .fab{
   position:sticky;bottom:16px;margin-left:auto;
-  float:right;margin-top:-68px;margin-right:6px;
+  float:right;margin-top:-78px;margin-right:6px;
 }
 .fab-center{
   position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:60;
@@ -199,6 +199,10 @@ body{
 }
 .modal h3{margin-top:0;color:var(--ink)}
 .modal h4{margin-bottom:4px;color:var(--ink)}
+.modal-title-row{display:flex;align-items:center;justify-content:space-between}
+.modal-title-row h3{margin:0}
+.icon-btn{background:transparent;border:none;font-size:21px;cursor:pointer;padding:4px 8px;border-radius:8px;line-height:1}
+.icon-btn:hover{background:#f2f2f2}
 .modal label{display:block;margin-bottom:12px;font-size:13px;color:var(--muted)}
 .modal label input, .modal label select, .modal label textarea{
   display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--line);

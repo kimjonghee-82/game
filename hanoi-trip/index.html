@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>하노이 · 사파 여행 플래너</title>
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 
@@ -56,10 +56,7 @@
 
   <!-- ================= 참고사항 ================= -->
   <section id="tab-reference" class="tab-panel">
-    <div class="region-tabs">
-      <button class="region-tab-btn active" data-region="hanoi">하노이</button>
-      <button class="region-tab-btn" data-region="sapa">사파</button>
-    </div>
+    <div class="region-tabs" id="region-tabs"></div>
     <ul class="ref-list" id="ref-list-active"></ul>
     <button id="btn-add-ref" class="fab-btn fab-center" title="참고사항 추가">+</button>
   </section>
@@ -172,9 +169,19 @@
 
 <!-- 참고사항 항목 편집 -->
 <div id="modal-ref" class="modal hidden">
-  <h3>참고사항 항목</h3>
+  <div class="modal-title-row">
+    <h3>참고사항 항목</h3>
+    <button id="ref-photo-btn" type="button" class="icon-btn" title="사진으로 채우기">📷</button>
+  </div>
+  <span id="ref-photo-status" class="status-text"></span>
+  <input type="file" id="ref-photo-input" accept="image/*" class="hidden">
+
   <input type="hidden" id="ref-id">
-  <input type="hidden" id="ref-region">
+  <input type="hidden" id="ref-region-original">
+  <label>장소
+    <input type="text" id="ref-region-input" list="ref-region-list" placeholder="예: 하노이, 사파, 다낭...">
+    <datalist id="ref-region-list"></datalist>
+  </label>
   <label>구분
     <select id="ref-type">
       <option value="맛집">맛집</option>
@@ -183,6 +190,11 @@
   </label>
   <label>이름 <input type="text" id="ref-name"></label>
   <label>설명 <textarea id="ref-desc" rows="3"></textarea></label>
+  <div class="map-row">
+    <input type="text" id="ref-map-url" placeholder="구글 지도 링크(비우면 이름으로 자동 생성)">
+    <button id="ref-map-open-btn" type="button" class="btn small ghost">🗺️ 지도 열기</button>
+  </div>
+  <label>웹페이지 <input type="text" id="ref-website" placeholder="https://..."></label>
   <div class="modal-actions">
     <button id="ref-delete-btn" class="btn danger">삭제</button>
     <div class="spacer"></div>
@@ -239,6 +251,6 @@
 <script src="https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

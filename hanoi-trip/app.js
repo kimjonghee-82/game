@@ -775,9 +775,33 @@ async function refreshExpenseKrw(expenseId, forceRerender) {
 
 /* ============================== 참고사항 탭 ============================== */
 
+const REGION_LABELS = { hanoi: '하노이', sapa: '사파' };
+function regionLabel(key) { return REGION_LABELS[key] || key; }
+function regionKeyForLabel(label) {
+  const found = Object.keys(REGION_LABELS).find(k => REGION_LABELS[k] === label);
+  return found || label;
+}
+
 let refRegion = 'hanoi';
 
+function getRegionKeys() {
+  const ref = loadReference();
+  const keys = Object.keys(ref);
+  const ordered = ['hanoi', 'sapa'].filter(k => keys.includes(k));
+  const extra = keys.filter(k => k !== 'hanoi' && k !== 'sapa');
+  return [...ordered, ...extra];
+}
+
+function renderRegionTabs() {
+  const keys = getRegionKeys();
+  if (!keys.includes(refRegion)) refRegion = keys[0] || 'hanoi';
+  document.getElementById('region-tabs').innerHTML = keys.map(k =>
+    `<button class="region-tab-btn${k === refRegion ? ' active' : ''}" data-region="${k}">${escapeHtml(regionLabel(k))}</button>`
+  ).join('');
+}
+
 function renderReferenceTab() {
+  renderRegionTabs();
   const ref = loadReference();
   const list = document.getElementById('ref-list-active');
   list.innerHTML = (ref[refRegion] || []).map(item => `
@@ -787,12 +811,11 @@ function renderReferenceTab() {
     </li>`).join('');
 }
 
-document.querySelectorAll('.region-tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    refRegion = btn.dataset.region;
-    document.querySelectorAll('.region-tab-btn').forEach(b => b.classList.toggle('active', b === btn));
-    renderReferenceTab();
-  });
+document.getElementById('region-tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.region-tab-btn');
+  if (!btn) return;
+  refRegion = btn.dataset.region;
+  renderReferenceTab();
 });
 
 document.getElementById('ref-list-active').addEventListener('click', (e) => {
@@ -802,46 +825,80 @@ document.getElementById('ref-list-active').addEventListener('click', (e) => {
 document.getElementById('btn-add-ref').addEventListener('click', () => openRefModal(refRegion, null));
 
 function openRefModal(region, itemId) {
-  document.getElementById('ref-region').value = region;
   document.getElementById('ref-id').value = itemId || '';
+  document.getElementById('ref-region-original').value = region;
   document.getElementById('ref-delete-btn').classList.toggle('hidden', !itemId);
-  let item = { type: '맛집', name: '', desc: '' };
+  document.getElementById('ref-photo-status').textContent = '';
+
+  document.getElementById('ref-region-list').innerHTML =
+    getRegionKeys().map(k => `<option value="${escapeHtml(regionLabel(k))}">`).join('');
+
+  let item = { type: '맛집', name: '', desc: '', mapUrl: '', website: '' };
   if (itemId) {
     const ref = loadReference();
-    item = (ref[region] || []).find(x => x.id === itemId) || item;
+    item = { ...item, ...((ref[region] || []).find(x => x.id === itemId) || {}) };
   }
+  document.getElementById('ref-region-input').value = regionLabel(region);
   document.getElementById('ref-type').value = item.type;
   document.getElementById('ref-name').value = item.name;
   document.getElementById('ref-desc').value = item.desc;
+  document.getElementById('ref-map-url').value = item.mapUrl || '';
+  document.getElementById('ref-website').value = item.website || '';
   openModal('modal-ref');
 }
 
 document.getElementById('ref-cancel-btn').addEventListener('click', () => closeModal('modal-ref'));
 
+/** 이 장소를 포함해 같은 탭(지역)의 모든 항목을 핀으로 함께 보여주는 구글 지도 경로 URL */
+function buildRegionMapUrl(region, currentName) {
+  const ref = loadReference();
+  const names = (ref[region] || []).map(x => x.name).filter(Boolean);
+  if (currentName && !names.includes(currentName)) names.push(currentName);
+  return names.length ? `https://www.google.com/maps/dir/${names.map(n => encodeURIComponent(n)).join('/')}` : '';
+}
+
+document.getElementById('ref-map-open-btn').addEventListener('click', () => {
+  const name = document.getElementById('ref-name').value.trim();
+  const region = regionKeyForLabel(document.getElementById('ref-region-input').value.trim()) || refRegion;
+  const manual = document.getElementById('ref-map-url').value.trim();
+  const url = buildRegionMapUrl(region, name) || manual || buildMapUrl(name);
+  if (!url) { toast('이름을 먼저 입력해주세요'); return; }
+  window.open(url, '_blank');
+});
+
 document.getElementById('ref-save-btn').addEventListener('click', () => {
-  const region = document.getElementById('ref-region').value;
   const id = document.getElementById('ref-id').value;
+  const originalRegion = document.getElementById('ref-region-original').value;
+  const regionLabelInput = document.getElementById('ref-region-input').value.trim();
+  if (!regionLabelInput) { toast('장소를 입력해주세요'); return; }
+  const region = regionKeyForLabel(regionLabelInput);
   const type = document.getElementById('ref-type').value;
   const name = document.getElementById('ref-name').value.trim();
   const desc = document.getElementById('ref-desc').value.trim();
+  const mapUrl = document.getElementById('ref-map-url').value.trim();
+  const website = document.getElementById('ref-website').value.trim();
   if (!name) { toast('이름을 입력해주세요'); return; }
 
   const ref = loadReference();
+  if (id && originalRegion && originalRegion !== region) {
+    ref[originalRegion] = (ref[originalRegion] || []).filter(x => x.id !== id);
+  }
   ref[region] = ref[region] || [];
   let item = ref[region].find(x => x.id === id);
   if (!item) {
     item = { id: uid() };
     ref[region].push(item);
   }
-  Object.assign(item, { type, name, desc });
+  Object.assign(item, { type, name, desc, mapUrl, website });
   saveReference(ref);
+  refRegion = region;
   renderReferenceTab();
   closeModal('modal-ref');
   toast('저장했습니다');
 });
 
 document.getElementById('ref-delete-btn').addEventListener('click', () => {
-  const region = document.getElementById('ref-region').value;
+  const region = document.getElementById('ref-region-original').value;
   const id = document.getElementById('ref-id').value;
   if (!id) return;
   if (!confirm('이 항목을 삭제할까요?')) return;
@@ -851,6 +908,22 @@ document.getElementById('ref-delete-btn').addEventListener('click', () => {
   renderReferenceTab();
   closeModal('modal-ref');
   toast('삭제했습니다');
+});
+
+document.getElementById('ref-photo-btn').addEventListener('click', () => document.getElementById('ref-photo-input').click());
+document.getElementById('ref-photo-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const result = await analyzePhoto(file, document.getElementById('ref-photo-status'));
+
+  const name = result.vendor || result.description;
+  if (name) document.getElementById('ref-name').value = name;
+  if (result.description && result.description !== name) document.getElementById('ref-desc').value = result.description;
+  document.getElementById('ref-type').value = result.category === '식사' ? '맛집' : '명소';
+  if (result.website) document.getElementById('ref-website').value = result.website;
+  const mapUrl = buildMapUrl(name, result.place);
+  if (mapUrl) document.getElementById('ref-map-url').value = mapUrl;
 });
 
 /* ============================== 기본 대화 탭 ============================== */
@@ -952,6 +1025,7 @@ const RECEIPT_ANALYSIS_PROMPT = `다음은 베트남(하노이/사파) 여행 �
   "date_on_receipt": "YYYY-MM-DD" 또는 null,
   "time_on_receipt": "HH:MM" 또는 null,
   "category": "이동" "식사" "관광" "숙소" "쇼핑" "기타" 중 하나,
+  "website": "사진 속에 보이는 웹사이트/홈페이지 주소가 있다면 그 값, 없으면 null",
   "description": "내용에 대한 한 문장 요약 (한국어)"
 }`;
 
@@ -1052,6 +1126,7 @@ async function analyzePhoto(file, statusEl) {
     isReceipt: !!(vision && vision.is_receipt),
     amount: (vision && vision.amount) || null,
     currency: (vision && vision.currency) || null,
+    website: (vision && vision.website) || '',
     thumb, meta: exif,
   };
 }
