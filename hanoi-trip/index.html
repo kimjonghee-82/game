@@ -246,6 +246,22 @@
   <p class="help-text">Google Cloud Console에서 발급받은 <b>OAuth 2.0 클라이언트 ID(웹 애플리케이션)</b>를 입력하세요. 발급 방법은 채팅 안내를 참고하세요.</p>
   <input type="text" id="settings-google-client-id" placeholder="xxxxxxxx.apps.googleusercontent.com">
 
+  <h4>다른 기기와 설정 공유</h4>
+  <p class="help-text">API 키를 포함한 현재 설정을 코드로 만들어서, 다른 기기의 설정 화면에 붙여넣으면 그대로 복사됩니다. 이 코드 안에 API 키가 그대로 들어있으니 본인만 아는 안전한 곳(메모앱 등)에 보관하세요 — <b>깃허브에는 올라가지 않습니다.</b></p>
+  <label>내보내기 코드
+    <textarea id="settings-export-code" rows="3" readonly placeholder="아래 '코드 생성'을 누르면 여기에 표시됩니다"></textarea>
+  </label>
+  <div class="modal-actions" style="margin-top:-8px;margin-bottom:14px">
+    <button id="settings-export-btn" class="btn small">코드 생성</button>
+    <button id="settings-copy-btn" class="btn small ghost">복사</button>
+  </div>
+  <label>가져오기 코드 붙여넣기
+    <textarea id="settings-import-code" rows="3" placeholder="다른 기기에서 만든 코드를 여기에 붙여넣으세요"></textarea>
+  </label>
+  <div class="modal-actions" style="margin-top:-8px">
+    <button id="settings-import-btn" class="btn small primary">가져오기 적용</button>
+  </div>
+
   <div class="modal-actions">
     <div class="spacer"></div>
     <button id="settings-cancel-btn" class="btn ghost">닫기</button>

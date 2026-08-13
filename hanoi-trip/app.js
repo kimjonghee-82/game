@@ -1132,6 +1132,8 @@ function openSettingsModal() {
   document.getElementById('settings-groq-key').value = s.groqApiKey || '';
   document.getElementById('settings-groq-model').value = s.groqModel || 'llama-3.3-70b-versatile';
   document.getElementById('settings-google-client-id').value = s.googleClientId || '';
+  document.getElementById('settings-export-code').value = '';
+  document.getElementById('settings-import-code').value = '';
   openModal('modal-settings');
 }
 document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
@@ -1149,6 +1151,67 @@ document.getElementById('settings-save-btn').addEventListener('click', () => {
   renderExpenseTab();
   closeModal('modal-settings');
   toast('설정을 저장했습니다');
+});
+
+/* -------- 설정 내보내기/가져오기 코드 (기기 간 공유용, 깃허브에는 저장되지 않음) -------- */
+
+function toBase64Unicode(str) {
+  return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))));
+}
+function fromBase64Unicode(b64) {
+  return decodeURIComponent(atob(b64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+}
+
+document.getElementById('settings-export-btn').addEventListener('click', () => {
+  const s = loadSettings();
+  const current = {
+    ...s,
+    startDate: document.getElementById('settings-start-date').value || s.startDate,
+    endDate: document.getElementById('settings-end-date').value || s.endDate,
+    groqApiKey: document.getElementById('settings-groq-key').value.trim(),
+    groqModel: document.getElementById('settings-groq-model').value.trim() || 'llama-3.3-70b-versatile',
+    googleClientId: document.getElementById('settings-google-client-id').value.trim(),
+  };
+  const code = toBase64Unicode(JSON.stringify(current));
+  const ta = document.getElementById('settings-export-code');
+  ta.value = code;
+  ta.select();
+  toast('코드를 생성했습니다. 복사해서 다른 기기에 붙여넣으세요');
+});
+
+document.getElementById('settings-copy-btn').addEventListener('click', async () => {
+  const ta = document.getElementById('settings-export-code');
+  if (!ta.value) { toast('먼저 코드 생성을 눌러주세요'); return; }
+  ta.select();
+  try {
+    await navigator.clipboard.writeText(ta.value);
+    toast('클립보드에 복사했습니다');
+  } catch (e) {
+    toast('자동 복사에 실패했습니다. 선택된 텍스트를 직접 복사(Ctrl/Cmd+C)해주세요');
+  }
+});
+
+document.getElementById('settings-import-btn').addEventListener('click', () => {
+  const raw = document.getElementById('settings-import-code').value.trim();
+  if (!raw) { toast('가져올 코드를 붙여넣어주세요'); return; }
+  let parsed;
+  try {
+    parsed = JSON.parse(fromBase64Unicode(raw));
+  } catch (e) {
+    toast('코드를 읽을 수 없습니다. 정확히 복사했는지 확인해주세요');
+    return;
+  }
+  const s = Object.assign(loadSettings(), parsed);
+  saveSettings(s);
+  document.getElementById('settings-start-date').value = s.startDate;
+  document.getElementById('settings-end-date').value = s.endDate;
+  document.getElementById('settings-groq-key').value = s.groqApiKey || '';
+  document.getElementById('settings-groq-model').value = s.groqModel || 'llama-3.3-70b-versatile';
+  document.getElementById('settings-google-client-id').value = s.googleClientId || '';
+  document.getElementById('settings-import-code').value = '';
+  renderItineraryGrid();
+  renderExpenseTab();
+  toast('설정을 가져와서 바로 적용했습니다');
 });
 
 /* ================================ 초기화 ================================ */
