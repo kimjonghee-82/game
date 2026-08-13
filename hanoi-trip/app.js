@@ -171,6 +171,43 @@ const DEFAULT_PHRASES = [
   ]},
 ];
 
+/* 사용자가 정리해둔 실제 일정표(엑셀)를 옮겨온 기본 데이터. 처음 실행 시 한 번만 채워지며,
+   이미 일정이 있으면(사용자가 뭔가 추가/수정했으면) 절대 덮어쓰지 않음. */
+const SEED_ITINERARY = [
+  { date: '2026-08-15', time: '08:30', text: '집 출발', category: '이동' },
+  { date: '2026-08-15', time: '09:10', text: '리무진 출발', category: '이동' },
+  { date: '2026-08-15', time: '12:00', text: '국민은행 환전', category: '기타' },
+  { date: '2026-08-15', time: '13:00', text: '약국에서 멀미약·고산병약', category: '쇼핑' },
+  { date: '2026-08-15', time: '14:00', text: '신세계면세점', category: '쇼핑' },
+  { date: '2026-08-15', time: '19:55', text: '인천출발 T1', category: '이동' },
+  { date: '2026-08-15', time: '22:50', text: '하노이 도착 T2', category: '이동' },
+  { date: '2026-08-15', time: '15:00', text: '르퍼폼', category: '숙소', lodging: true },
+
+  { date: '2026-08-16', time: '21:50', text: '역 도착', category: '이동' },
+  { date: '2026-08-16', time: '22:40', text: '열차 출발', category: '이동' },
+  { date: '2026-08-16', time: '15:00', text: '슬리핑기차', category: '숙소', lodging: true },
+
+  { date: '2026-08-17', time: '06:25', text: '사파 도착, 픽업밴', category: '관광' },
+  { date: '2026-08-17', time: '08:00', text: '캣캣힐스 도착', category: '관광' },
+  { date: '2026-08-17', time: '15:00', text: '캣캣힐스', category: '숙소', lodging: true },
+
+  { date: '2026-08-18', time: '15:00', text: '캣캣힐스', category: '숙소', lodging: true },
+
+  { date: '2026-08-19', time: '09:00', text: '픽업서비스???', category: '이동' },
+  { date: '2026-08-19', time: '11:00', text: '버스 출발', category: '이동' },
+  { date: '2026-08-19', time: '15:00', text: '슬리핑버스', category: '숙소', lodging: true },
+
+  { date: '2026-08-20', time: '15:00', text: '자르댕', category: '숙소', lodging: true },
+  { date: '2026-08-21', time: '15:00', text: '자르댕', category: '숙소', lodging: true },
+
+  { date: '2026-08-22', time: '08:00', text: '하노이 출발', category: '이동' },
+  { date: '2026-08-22', time: '09:20', text: '공항 도착', category: '이동' },
+  { date: '2026-08-22', time: '12:20', text: '하노이 출발 (항공편)', category: '이동' },
+  { date: '2026-08-22', time: '15:00', text: '기내', category: '숙소', lodging: true },
+
+  { date: '2026-08-23', time: '06:40', text: '인천 도착', category: '이동' },
+];
+
 /* ------------------------------- 저장/로드 ------------------------------- */
 
 function load(key, fallback) {
@@ -221,6 +258,12 @@ function seedDefaultsIfEmpty() {
       id: uid(),
       situation: cat.situation,
       phrases: cat.phrases.map(([vi, ko, pron]) => ({ vi, ko, pron })),
+    })));
+  }
+  if (loadItinerary().length === 0) {
+    saveItinerary(SEED_ITINERARY.map(e => ({
+      id: uid(), vendor: '', place: '', mapUrl: '', expenseId: null,
+      photoThumb: null, photoMeta: null, lodging: false, ...e,
     })));
   }
 }
@@ -354,37 +397,39 @@ function fillDateSelect(selectEl, selectedDate) {
 function renderItineraryGrid() {
   renderDayNav('itin');
   const entries = loadItinerary();
-  const dayEntries = entries.filter(e => e.date === viewDate && !e.lodging);
+  const dayEntries = entries.filter(e => e.date === viewDate && !e.lodging)
+    .sort((a, b) => a.time.localeCompare(b.time));
   const lodgingEntries = entries.filter(e => e.date === viewDate && e.lodging);
 
-  let html = '';
-  for (let h = 0; h < 24; h++) {
-    const cellEntries = dayEntries.filter(e => parseInt(e.time.split(':')[0], 10) === h);
-    const chips = cellEntries.map(e => renderChip(e)).join('');
-    html += `<div class="day-row" data-hour="${h}">
-      <div class="day-row-time">${h}:00</div>
-      <div class="day-row-content">${chips}</div>
-    </div>`;
-  }
+  let html = dayEntries.length
+    ? dayEntries.map(e => renderTimelineItem(e)).join('')
+    : '<div class="tl-empty">이 날은 아직 일정이 없어요. 아래 + 버튼으로 추가해보세요.</div>';
+
   const lodgingText = lodgingEntries.map(e => escapeHtml(e.text)).join(', ');
-  html += `<div class="day-row lodging-row" data-lodging="1">
-    <div class="day-row-time">숙소</div>
-    <div class="day-row-content">${lodgingText || '<span style="color:#bbb">+ 숙소 추가</span>'}</div>
-  </div>`;
+  html += `<div class="tl-lodging" data-lodging="1">🏨 ${lodgingText || '<span class="tl-lodging-empty">숙소 정보 추가</span>'}</div>`;
 
   document.getElementById('itinerary-day-view').innerHTML = html;
   document.getElementById('itinerary-status').textContent = `이 날 ${dayEntries.length}개 일정`;
 }
 
-function renderChip(e) {
+function renderTimelineItem(e) {
   const costHtml = e.expenseId ? renderChipCost(e.expenseId) : '';
-  return `<div class="entry-chip${e.photoThumb ? ' has-photo' : ''}" data-entry-id="${e.id}">` +
-    `<span class="chip-time">${e.time}</span>${escapeHtml(e.text)}${costHtml}</div>`;
+  const subChips = [];
+  if (e.vendor) subChips.push(`<span class="tl-chip">${escapeHtml(e.vendor)}</span>`);
+  if (e.place) subChips.push(`<span class="tl-chip">📍 ${escapeHtml(e.place)}</span>`);
+  return `<div class="tl-item" data-entry-id="${e.id}">
+    <div class="tl-time">${e.time}</div>
+    <div class="tl-rail"><span class="tl-dot"></span><span class="tl-connector"></span></div>
+    <div class="tl-content">
+      <div class="tl-title">${escapeHtml(e.text)}${e.photoThumb ? '<span class="tl-photo-mark">📷</span>' : ''}${costHtml}</div>
+      ${subChips.length ? `<div class="tl-sub">${subChips.join('')}</div>` : ''}
+    </div>
+  </div>`;
 }
 function renderChipCost(expenseId) {
   const exp = loadExpenses().find(x => x.id === expenseId);
   if (!exp) return '';
-  return `<span class="chip-cost">${fmtAmount(exp.amount)} ${exp.currency}</span>`;
+  return `<span class="tl-cost">${fmtAmount(exp.amount)} ${exp.currency}</span>`;
 }
 
 function escapeHtml(s) {
@@ -392,22 +437,19 @@ function escapeHtml(s) {
 }
 
 document.getElementById('itinerary-day-view').addEventListener('click', (e) => {
-  const chip = e.target.closest('.entry-chip');
-  if (chip) { openEntryModal(chip.dataset.entryId); return; }
-  const lodgingRow = e.target.closest('.lodging-row');
+  const item = e.target.closest('.tl-item');
+  if (item) { openEntryModal(item.dataset.entryId); return; }
+  const lodgingRow = e.target.closest('.tl-lodging');
   if (lodgingRow) {
     const existing = loadItinerary().find(x => x.date === viewDate && x.lodging);
     if (existing) openEntryModal(existing.id);
     else openEntryModal(null, { date: viewDate, time: '15:00', lodging: true });
-    return;
-  }
-  const row = e.target.closest('.day-row[data-hour]');
-  if (row) {
-    openEntryModal(null, { date: viewDate, time: `${String(row.dataset.hour).padStart(2, '0')}:00` });
   }
 });
 
 document.getElementById('btn-add-entry').addEventListener('click', () => openEntryModal(null, { date: viewDate }));
+
+let pendingEntryPhoto = null; // {thumb, meta} set by "사진으로 채우기", applied on save
 
 function openEntryModal(entryId, prefill) {
   const isNew = !entryId;
@@ -415,17 +457,23 @@ function openEntryModal(entryId, prefill) {
   document.getElementById('entry-id').value = entryId || '';
   fillDateSelect(document.getElementById('entry-date'));
   document.getElementById('entry-delete-btn').classList.toggle('hidden', isNew);
+  document.getElementById('entry-photo-status').textContent = '';
+  pendingEntryPhoto = null;
 
-  let entry = { date: viewDate || getTripDates()[0], time: '09:00', text: '', category: '이동', lodging: false, expenseId: null };
+  let entry = { date: viewDate || getTripDates()[0], time: '09:00', text: '', vendor: '', place: '', mapUrl: '', category: '이동', lodging: false, expenseId: null, photoThumb: null, photoMeta: null };
   if (!isNew) {
-    entry = loadItinerary().find(x => x.id === entryId) || entry;
+    entry = { ...entry, ...(loadItinerary().find(x => x.id === entryId) || {}) };
   } else if (prefill) {
     entry = { ...entry, ...prefill };
   }
 
   document.getElementById('entry-date').value = entry.date;
   document.getElementById('entry-time').value = entry.time;
+  updateKoreaTimeDisplay();
   document.getElementById('entry-text').value = entry.text || '';
+  document.getElementById('entry-vendor').value = entry.vendor || '';
+  document.getElementById('entry-place').value = entry.place || '';
+  document.getElementById('entry-map-url').value = entry.mapUrl || '';
   document.getElementById('entry-category').value = entry.category || '이동';
   document.getElementById('entry-lodging').checked = !!entry.lodging;
 
@@ -436,6 +484,32 @@ function openEntryModal(entryId, prefill) {
   openModal('modal-entry');
 }
 
+function toKoreaTime(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  let kh = h + 2;
+  let suffix = '';
+  if (kh >= 24) { kh -= 24; suffix = ' (다음날)'; }
+  return `${String(kh).padStart(2, '0')}:${String(m).padStart(2, '0')}${suffix}`;
+}
+function updateKoreaTimeDisplay() {
+  const t = document.getElementById('entry-time').value;
+  document.getElementById('entry-kr-time').textContent = t ? `🇰🇷 한국 시간 ${toKoreaTime(t)} · 베트남보다 2시간 빠름` : '';
+}
+document.getElementById('entry-time').addEventListener('input', updateKoreaTimeDisplay);
+
+function buildMapUrl(vendor, place) {
+  const q = (vendor || place || '').trim();
+  return q ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` : '';
+}
+document.getElementById('entry-map-open-btn').addEventListener('click', () => {
+  const manual = document.getElementById('entry-map-url').value.trim();
+  const vendor = document.getElementById('entry-vendor').value.trim();
+  const place = document.getElementById('entry-place').value.trim();
+  const url = manual || buildMapUrl(vendor, place);
+  if (!url) { toast('상호나 장소를 먼저 입력해주세요'); return; }
+  window.open(url, '_blank');
+});
+
 document.getElementById('entry-cancel-btn').addEventListener('click', () => closeModal('modal-entry'));
 
 document.getElementById('entry-save-btn').addEventListener('click', () => {
@@ -444,6 +518,9 @@ document.getElementById('entry-save-btn').addEventListener('click', () => {
   const date = document.getElementById('entry-date').value;
   const time = document.getElementById('entry-time').value;
   const text = document.getElementById('entry-text').value.trim();
+  const vendor = document.getElementById('entry-vendor').value.trim();
+  const place = document.getElementById('entry-place').value.trim();
+  const mapUrl = document.getElementById('entry-map-url').value.trim();
   const category = document.getElementById('entry-category').value;
   const lodging = document.getElementById('entry-lodging').checked;
   const costAmount = document.getElementById('entry-cost-amount').value;
@@ -454,13 +531,18 @@ document.getElementById('entry-save-btn').addEventListener('click', () => {
 
   let entry = entries.find(x => x.id === id);
   if (!entry) {
-    entry = { id: uid(), date, time, text, category, lodging, expenseId: null, photoThumb: null, photoMeta: null };
+    entry = { id: uid(), date, time, text, vendor, place, mapUrl, category, lodging, expenseId: null, photoThumb: null, photoMeta: null };
     entries.push(entry);
   } else {
-    Object.assign(entry, { date, time, text, category, lodging });
+    Object.assign(entry, { date, time, text, vendor, place, mapUrl, category, lodging });
+  }
+  if (pendingEntryPhoto) {
+    entry.photoThumb = pendingEntryPhoto.thumb;
+    entry.photoMeta = pendingEntryPhoto.meta;
+    pendingEntryPhoto = null;
   }
 
-  syncEntryCost(entry, costAmount ? Number(costAmount) : null, costCurrency, `${date} ${time} ${text}`);
+  syncEntryCost(entry, costAmount ? Number(costAmount) : null, costCurrency, vendor || text);
   saveItinerary(entries);
   renderItineraryGrid();
   renderExpenseTab();
@@ -772,27 +854,7 @@ document.getElementById('phrase-categories').addEventListener('click', (e) => {
   list.style.display = list.style.display === 'none' ? '' : 'none';
 });
 
-/* ============================== 사진 분석 ============================== */
-
-let photoModalMode = 'itinerary'; // 'itinerary' | 'expense'
-let lastPhotoThumb = null;
-let lastPhotoMeta = null;
-
-document.getElementById('btn-upload-photo').addEventListener('click', () => {
-  photoModalMode = 'itinerary';
-  document.getElementById('photo-file-input').click();
-});
-document.getElementById('btn-upload-receipt').addEventListener('click', () => {
-  photoModalMode = 'expense';
-  document.getElementById('photo-file-input').click();
-});
-
-document.getElementById('photo-file-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
-  await startPhotoAnalysis(file);
-});
+/* ============================== 사진 분석 (OCR + Groq) ============================== */
 
 function resizeImageToDataUrl(file, maxDim, quality) {
   return new Promise((resolve, reject) => {
@@ -858,13 +920,13 @@ const RECEIPT_ANALYSIS_PROMPT = `다음은 베트남(하노이/사파) 여행 �
 아래 JSON 형식으로만 답변하세요 (다른 설명 없이 JSON만):
 {
   "is_receipt": true 또는 false (영수증/입장권/티켓으로 보이면 true),
-  "vendor": "가게/장소 이름 또는 null",
+  "vendor": "가게/장소 이름(상호) 또는 null",
+  "place": "주소나 지역/장소 이름 또는 null",
   "amount": 숫자 또는 null (영수증일 경우 총액 숫자만, 통화 기호/구분자 제외),
   "currency": "VND" 또는 "KRW" 또는 "USD" 또는 null,
   "date_on_receipt": "YYYY-MM-DD" 또는 null,
   "time_on_receipt": "HH:MM" 또는 null,
   "category": "이동" "식사" "관광" "숙소" "쇼핑" "기타" 중 하나,
-  "place_guess": "텍스트에서 유추한 장소 이름 (한국어, 알 수 없으면 null)",
   "description": "내용에 대한 한 문장 요약 (한국어)"
 }`;
 
@@ -922,33 +984,28 @@ function parseJsonLoose(text) {
   return null;
 }
 
-async function startPhotoAnalysis(file) {
+/** 사진 하나를 분석(EXIF + OCR + Groq)해서 정리된 정보를 반환. statusEl에 진행 상태를 표시. */
+async function analyzePhoto(file, statusEl) {
   const settings = loadSettings();
-  document.getElementById('photo-result-fields').classList.add('hidden');
-  document.getElementById('photo-save-btn').classList.add('hidden');
-  document.getElementById('photo-analyze-status').textContent = '이미지 처리 중...';
-  openModal('modal-photo');
+  const setStatus = (t) => { if (statusEl) statusEl.textContent = t; };
 
+  setStatus('이미지 처리 중...');
   const resized = await resizeImageToDataUrl(file, 1024, 0.75);
   const thumb = await resizeImageToDataUrl(file, 400, 0.6);
-  lastPhotoThumb = thumb;
-  document.getElementById('photo-preview').src = resized;
-
   const exif = await readExifInfo(file);
-  lastPhotoMeta = exif;
 
-  let place = null;
+  let geoPlace = null;
   if (exif.lat && exif.lon) {
-    document.getElementById('photo-analyze-status').textContent = '위치 정보 확인 중...';
-    place = await reverseGeocode(exif.lat, exif.lon);
+    setStatus('위치 정보 확인 중...');
+    geoPlace = await reverseGeocode(exif.lat, exif.lon);
   }
 
-  document.getElementById('photo-analyze-status').textContent = '사진에서 글자 인식 중 (OCR)...';
+  setStatus('사진에서 글자 인식 중 (OCR)...');
   const ocrText = await ocrImage(resized);
 
   let vision = null;
   if (settings.groqApiKey && ocrText.replace(/\s/g, '').length >= 2) {
-    document.getElementById('photo-analyze-status').textContent = 'AI가 인식된 텍스트를 분석하는 중...';
+    setStatus('AI가 인식된 텍스트를 분석하는 중...');
     try {
       vision = await analyzeTextWithGroq(ocrText, settings.groqApiKey, settings.groqModel);
     } catch (e) {
@@ -956,93 +1013,64 @@ async function startPhotoAnalysis(file) {
     }
   }
 
-  applyPhotoAnalysisResult(exif, place, vision);
-}
-
-function applyPhotoAnalysisResult(exif, place, vision) {
-  const isExpenseMode = photoModalMode === 'expense';
-  const catSelect = document.getElementById('photo-category');
-  const cats = isExpenseMode ? EXPENSE_CATEGORIES : ITINERARY_CATEGORIES;
-  catSelect.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join('');
-
-  const date = (vision && vision.date_on_receipt) || (exif.takenAt && exif.takenAt.date) || viewDate || getTripDates()[0];
-  const time = (vision && vision.time_on_receipt) || (exif.takenAt && exif.takenAt.time) || '12:00';
-  const textParts = [];
-  if (vision && vision.is_receipt && vision.vendor) textParts.push(vision.vendor);
-  else if (vision && vision.place_guess) textParts.push(vision.place_guess);
-  else if (place) textParts.push(place);
-  if (vision && vision.description && !isExpenseMode) textParts.push(vision.description);
-  const text = textParts.filter(Boolean).join(' - ') || place || '사진 기록';
-
-  fillDateSelect(document.getElementById('photo-date'), getTripDates().includes(date) ? date : viewDate);
-  document.getElementById('photo-time').value = time;
-  document.getElementById('photo-text').value = text;
-  if (vision && vision.category) {
-    const mapped = isExpenseMode ? (ITIN_TO_EXPENSE_CATEGORY[vision.category] || vision.category) : vision.category;
-    if (cats.includes(mapped)) catSelect.value = mapped;
-  }
-
-  const isCostCheckbox = document.getElementById('photo-is-cost');
-  const costFields = document.getElementById('photo-cost-fields');
-  if (isExpenseMode) {
-    document.getElementById('entry-lodging'); // no-op, keep structure
-    isCostCheckbox.checked = true;
-    isCostCheckbox.parentElement.classList.add('hidden');
-    costFields.classList.remove('hidden');
-  } else {
-    isCostCheckbox.parentElement.classList.remove('hidden');
-    isCostCheckbox.checked = !!(vision && vision.is_receipt);
-    costFields.classList.toggle('hidden', !isCostCheckbox.checked);
-  }
-  document.getElementById('photo-cost-amount').value = (vision && vision.amount) || '';
-  document.getElementById('photo-cost-currency').value = (vision && vision.currency) || 'VND';
-
-  document.getElementById('photo-result-fields').classList.remove('hidden');
-  document.getElementById('photo-save-btn').classList.remove('hidden');
-  document.getElementById('photo-analyze-status').textContent = vision
+  setStatus(vision
     ? 'AI 분석 완료 — 내용을 확인하고 저장하세요'
-    : (exif.takenAt || exif.lat ? '사진 메타데이터로 추정했습니다 — 내용을 확인하고 저장하세요' : '자동 인식된 정보가 없습니다 — 직접 입력 후 저장하세요');
+    : (exif.takenAt || exif.lat ? '사진 메타데이터로 채웠습니다 — 확인 후 저장하세요' : '인식된 정보가 없습니다. 직접 입력해주세요'));
+
+  return {
+    date: (vision && vision.date_on_receipt) || (exif.takenAt && exif.takenAt.date) || null,
+    time: (vision && vision.time_on_receipt) || (exif.takenAt && exif.takenAt.time) || null,
+    vendor: (vision && vision.vendor) || '',
+    place: (vision && vision.place) || geoPlace || '',
+    description: (vision && vision.description) || '',
+    category: (vision && vision.category) || null,
+    isReceipt: !!(vision && vision.is_receipt),
+    amount: (vision && vision.amount) || null,
+    currency: (vision && vision.currency) || null,
+    thumb, meta: exif,
+  };
 }
 
-document.getElementById('photo-is-cost').addEventListener('change', (e) => {
-  document.getElementById('photo-cost-fields').classList.toggle('hidden', !e.target.checked);
+document.getElementById('entry-photo-btn').addEventListener('click', () => document.getElementById('entry-photo-input').click());
+document.getElementById('entry-photo-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const result = await analyzePhoto(file, document.getElementById('entry-photo-status'));
+
+  if (result.date && getTripDates().includes(result.date)) document.getElementById('entry-date').value = result.date;
+  if (result.time) { document.getElementById('entry-time').value = result.time; updateKoreaTimeDisplay(); }
+  if (result.vendor) document.getElementById('entry-vendor').value = result.vendor;
+  if (result.place) document.getElementById('entry-place').value = result.place;
+  const title = result.vendor || result.description;
+  if (title) document.getElementById('entry-text').value = title;
+  if (result.category && ITINERARY_CATEGORIES.includes(result.category)) document.getElementById('entry-category').value = result.category;
+  if (result.isReceipt && result.amount) {
+    document.getElementById('entry-cost-amount').value = result.amount;
+    document.getElementById('entry-cost-currency').value = result.currency || 'VND';
+  }
+  pendingEntryPhoto = { thumb: result.thumb, meta: result.meta };
 });
 
-document.getElementById('photo-cancel-btn').addEventListener('click', () => closeModal('modal-photo'));
+document.getElementById('expense-photo-btn').addEventListener('click', () => document.getElementById('expense-photo-input').click());
+document.getElementById('expense-photo-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const result = await analyzePhoto(file, document.getElementById('expense-photo-status'));
 
-document.getElementById('photo-save-btn').addEventListener('click', () => {
-  const date = document.getElementById('photo-date').value;
-  const time = document.getElementById('photo-time').value;
-  const text = document.getElementById('photo-text').value.trim();
-  const category = document.getElementById('photo-category').value;
-  const isCost = document.getElementById('photo-is-cost').checked;
-  const costAmount = document.getElementById('photo-cost-amount').value;
-  const costCurrency = document.getElementById('photo-cost-currency').value;
-
-  if (!text) { toast('내용을 입력해주세요'); return; }
-
-  if (photoModalMode === 'expense') {
-    if (!costAmount) { toast('금액을 입력해주세요'); return; }
-    const expenses = loadExpenses();
-    const exp = { id: uid(), source: 'photo', date, time, place: text, category, amount: Number(costAmount), currency: costCurrency, memo: '' };
-    expenses.push(exp);
-    saveExpenses(expenses);
-    if (costCurrency !== 'KRW') refreshExpenseKrw(exp.id, true);
-    renderExpenseTab();
-    toast('사진으로 비용을 추가했습니다');
-  } else {
-    const entries = loadItinerary();
-    const entry = { id: uid(), date, time, text, category, lodging: false, expenseId: null, photoThumb: lastPhotoThumb, photoMeta: lastPhotoMeta };
-    entries.push(entry);
-    if (isCost && costAmount) {
-      syncEntryCost(entry, Number(costAmount), costCurrency, text);
-    }
-    saveItinerary(entries);
-    renderItineraryGrid();
-    renderExpenseTab();
-    toast('사진으로 일정을 추가했습니다');
+  if (result.date) document.getElementById('expense-date').value = result.date;
+  if (result.time) document.getElementById('expense-time').value = result.time;
+  const place = result.vendor || result.place || result.description;
+  if (place) document.getElementById('expense-place').value = place;
+  if (result.category) {
+    const mapped = ITIN_TO_EXPENSE_CATEGORY[result.category] || result.category;
+    if (EXPENSE_CATEGORIES.includes(mapped)) document.getElementById('expense-category').value = mapped;
   }
-  closeModal('modal-photo');
+  if (result.amount) {
+    document.getElementById('expense-amount').value = result.amount;
+    document.getElementById('expense-currency').value = result.currency || 'VND';
+  }
 });
 
 /* ============================== 구글 시트 내보내기 ============================== */
@@ -1050,21 +1078,21 @@ document.getElementById('photo-save-btn').addEventListener('click', () => {
 function buildGridData() {
   const dates = getTripDates();
   const entries = loadItinerary();
-  const header = ['시간', ...dates.map(formatDateLabel)];
+  const expenses = loadExpenses();
+  const header = ['날짜', '현지시간', '한국시간', '내용', '상호', '장소', '분류', '비용', '통화', '구글지도'];
   const rows = [header];
-  for (let h = 0; h < 24; h++) {
-    const row = [`${h}:00`];
-    for (const d of dates) {
-      const cellEntries = entries.filter(e => e.date === d && !e.lodging && parseInt(e.time.split(':')[0], 10) === h);
-      row.push(cellEntries.map(e => `${e.time} ${e.text}`).join(' / '));
-    }
-    rows.push(row);
-  }
-  const lodgingRow = ['숙소'];
-  for (const d of dates) {
-    lodgingRow.push(entries.filter(e => e.date === d && e.lodging).map(e => e.text).join(', '));
-  }
-  rows.push(lodgingRow);
+  dates.forEach(d => {
+    const dayEntries = entries.filter(e => e.date === d && !e.lodging).sort((a, b) => a.time.localeCompare(b.time));
+    dayEntries.forEach(e => {
+      const exp = e.expenseId ? expenses.find(x => x.id === e.expenseId) : null;
+      rows.push([
+        formatDateLabel(d), e.time, toKoreaTime(e.time), e.text, e.vendor || '', e.place || '', e.category,
+        exp ? exp.amount : '', exp ? exp.currency : '', e.mapUrl || buildMapUrl(e.vendor, e.place),
+      ]);
+    });
+    const lodging = entries.filter(e => e.date === d && e.lodging).map(e => e.text).join(', ');
+    if (lodging) rows.push([formatDateLabel(d), '숙소', '', lodging, '', '', '숙소', '', '', '']);
+  });
   return rows;
 }
 
