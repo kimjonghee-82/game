@@ -190,8 +190,8 @@ function loadSettings() {
     startDate: '2026-08-15',
     endDate: '2026-08-23',
     extraDates: [],
-    grokApiKey: '',
-    grokModel: 'grok-4',
+    groqApiKey: '',
+    groqModel: 'llama-3.3-70b-versatile',
     googleClientId: '',
     googleSpreadsheetId: '',
   });
@@ -810,37 +810,56 @@ async function reverseGeocode(lat, lon) {
   } catch (e) { return null; }
 }
 
-const VISION_PROMPT = `이 이미지는 베트남(하노이/사파) 여행 중 촬영한 사진입니다.
+const RECEIPT_ANALYSIS_PROMPT = `다음은 베트남(하노이/사파) 여행 중 촬영한 사진에서 OCR로 인식한 텍스트입니다. OCR 결과라 오탈자나 줄바꿈 깨짐이 있을 수 있습니다.
 아래 JSON 형식으로만 답변하세요 (다른 설명 없이 JSON만):
 {
-  "is_receipt": true 또는 false (영수증/입장권/티켓이면 true),
+  "is_receipt": true 또는 false (영수증/입장권/티켓으로 보이면 true),
   "vendor": "가게/장소 이름 또는 null",
-  "amount": 숫자 또는 null (영수증일 경우 총액 숫자만),
+  "amount": 숫자 또는 null (영수증일 경우 총액 숫자만, 통화 기호/구분자 제외),
   "currency": "VND" 또는 "KRW" 또는 "USD" 또는 null,
   "date_on_receipt": "YYYY-MM-DD" 또는 null,
   "time_on_receipt": "HH:MM" 또는 null,
   "category": "이동" "식사" "관광" "숙소" "쇼핑" "기타" 중 하나,
-  "place_guess": "사진 속 장소/풍경에 대한 짧은 이름 추정 (한국어)",
-  "description": "사진 내용에 대한 한 문장 요약 (한국어)"
+  "place_guess": "텍스트에서 유추한 장소 이름 (한국어, 알 수 없으면 null)",
+  "description": "내용에 대한 한 문장 요약 (한국어)"
 }`;
 
-async function analyzeImageWithGrok(dataUrl, apiKey, model) {
-  const res = await fetch('https://api.x.ai/v1/chat/completions', {
+let _tesseractWorker = null;
+async function getTesseractWorker() {
+  if (_tesseractWorker) return _tesseractWorker;
+  _tesseractWorker = await Tesseract.createWorker('eng+vie', 1, {
+    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core-simd-lstm.wasm.js',
+  });
+  return _tesseractWorker;
+}
+
+async function ocrImage(dataUrl) {
+  try {
+    const worker = await getTesseractWorker();
+    const { data } = await worker.recognize(dataUrl);
+    return (data.text || '').replace(/\n+/g, ' ').trim();
+  } catch (e) {
+    console.warn('OCR 실패', e);
+    return '';
+  }
+}
+
+async function analyzeTextWithGroq(ocrText, apiKey, model) {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'content-type': 'application/json',
+      'Content-Type': 'application/json',
       'Authorization': 'Bearer ' + apiKey,
     },
     body: JSON.stringify({
-      model: model || 'grok-4',
+      model: model || 'llama-3.3-70b-versatile',
       max_tokens: 500,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: VISION_PROMPT },
-          { type: 'image_url', image_url: { url: dataUrl } },
-        ],
-      }],
+      temperature: 0,
+      messages: [
+        { role: 'system', content: RECEIPT_ANALYSIS_PROMPT },
+        { role: 'user', content: `OCR 텍스트:\n${ocrText}` },
+      ],
     }),
   });
   if (!res.ok) {
@@ -880,13 +899,16 @@ async function startPhotoAnalysis(file) {
     place = await reverseGeocode(exif.lat, exif.lon);
   }
 
+  document.getElementById('photo-analyze-status').textContent = '사진에서 글자 인식 중 (OCR)...';
+  const ocrText = await ocrImage(resized);
+
   let vision = null;
-  if (settings.grokApiKey) {
-    document.getElementById('photo-analyze-status').textContent = 'AI가 사진 내용을 분석하는 중...';
+  if (settings.groqApiKey && ocrText.replace(/\s/g, '').length >= 2) {
+    document.getElementById('photo-analyze-status').textContent = 'AI가 인식된 텍스트를 분석하는 중...';
     try {
-      vision = await analyzeImageWithGrok(resized, settings.grokApiKey, settings.grokModel);
+      vision = await analyzeTextWithGroq(ocrText, settings.groqApiKey, settings.groqModel);
     } catch (e) {
-      toast('AI 사진 분석 실패: ' + e.message, 5000);
+      toast('AI 분석 실패: ' + e.message, 5000);
     }
   }
 
@@ -1063,8 +1085,8 @@ function openSettingsModal() {
   const s = loadSettings();
   document.getElementById('settings-start-date').value = s.startDate;
   document.getElementById('settings-end-date').value = s.endDate;
-  document.getElementById('settings-grok-key').value = s.grokApiKey || '';
-  document.getElementById('settings-grok-model').value = s.grokModel || 'grok-4';
+  document.getElementById('settings-groq-key').value = s.groqApiKey || '';
+  document.getElementById('settings-groq-model').value = s.groqModel || 'llama-3.3-70b-versatile';
   document.getElementById('settings-google-client-id').value = s.googleClientId || '';
   openModal('modal-settings');
 }
@@ -1075,8 +1097,8 @@ document.getElementById('settings-save-btn').addEventListener('click', () => {
   const s = loadSettings();
   s.startDate = document.getElementById('settings-start-date').value || s.startDate;
   s.endDate = document.getElementById('settings-end-date').value || s.endDate;
-  s.grokApiKey = document.getElementById('settings-grok-key').value.trim();
-  s.grokModel = document.getElementById('settings-grok-model').value.trim() || 'grok-4';
+  s.groqApiKey = document.getElementById('settings-groq-key').value.trim();
+  s.groqModel = document.getElementById('settings-groq-model').value.trim() || 'llama-3.3-70b-versatile';
   s.googleClientId = document.getElementById('settings-google-client-id').value.trim();
   saveSettings(s);
   renderItineraryGrid();

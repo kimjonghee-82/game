@@ -227,10 +227,10 @@
   <label>여행 시작일 <input type="date" id="settings-start-date"></label>
   <label>여행 종료일 <input type="date" id="settings-end-date"></label>
 
-  <h4>사진 분석용 xAI(Grok) API 키</h4>
-  <p class="help-text">사진 속 장소/영수증 내용을 실제로 읽어내는 데 사용됩니다. <a href="https://console.x.ai" target="_blank" rel="noopener">console.x.ai</a>에서 발급받으세요. (미입력 시 사진의 촬영시간·GPS 위치만 자동 인식됩니다)</p>
-  <input type="password" id="settings-grok-key" placeholder="xai-...">
-  <label>Grok 모델명 (문제 있을 때만 변경) <input type="text" id="settings-grok-model" placeholder="grok-4"></label>
+  <h4>사진 분석용 Groq API 키</h4>
+  <p class="help-text">사진에서 글자를 인식(OCR)한 뒤 영수증/장소 정보를 정리하는 데 사용됩니다. <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com</a>에서 발급받으세요. Groq API는 완전 무료이며 카드 등록이 필요 없습니다. (미입력 시 사진의 촬영시간·GPS 위치만 자동 인식됩니다)</p>
+  <input type="password" id="settings-groq-key" placeholder="gsk_...">
+  <label>Groq 모델명 (문제 있을 때만 변경) <input type="text" id="settings-groq-model" placeholder="llama-3.3-70b-versatile"></label>
 
   <h4>구글 시트 연동 (OAuth 클라이언트 ID)</h4>
   <p class="help-text">Google Cloud Console에서 발급받은 <b>OAuth 2.0 클라이언트 ID(웹 애플리케이션)</b>를 입력하세요. 발급 방법은 채팅 안내를 참고하세요.</p>
@@ -246,6 +246,7 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="app.js"></script>
 </body>
