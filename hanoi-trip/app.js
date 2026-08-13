@@ -775,27 +775,31 @@ async function refreshExpenseKrw(expenseId, forceRerender) {
 
 /* ============================== 참고사항 탭 ============================== */
 
+let refRegion = 'hanoi';
+
 function renderReferenceTab() {
   const ref = loadReference();
-  ['hanoi', 'sapa'].forEach(region => {
-    const list = document.getElementById('ref-list-' + region);
-    list.innerHTML = (ref[region] || []).map(item => `
-      <li class="ref-item" data-id="${item.id}" data-region="${region}">
-        <div class="ref-item-title"><span class="tag">${item.type}</span>${escapeHtml(item.name)}</div>
-        <div class="ref-item-desc">${escapeHtml(item.desc || '')}</div>
-      </li>`).join('');
-  });
+  const list = document.getElementById('ref-list-active');
+  list.innerHTML = (ref[refRegion] || []).map(item => `
+    <li class="ref-item" data-id="${item.id}">
+      <div class="ref-item-title"><span class="tag">${item.type}</span>${escapeHtml(item.name)}</div>
+      <div class="ref-item-desc">${escapeHtml(item.desc || '')}</div>
+    </li>`).join('');
 }
 
-document.querySelectorAll('.ref-list').forEach(list => {
-  list.addEventListener('click', (e) => {
-    const li = e.target.closest('.ref-item');
-    if (li) openRefModal(li.dataset.region, li.dataset.id);
+document.querySelectorAll('.region-tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    refRegion = btn.dataset.region;
+    document.querySelectorAll('.region-tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+    renderReferenceTab();
   });
 });
-document.querySelectorAll('[data-add-ref]').forEach(btn => {
-  btn.addEventListener('click', () => openRefModal(btn.dataset.addRef, null));
+
+document.getElementById('ref-list-active').addEventListener('click', (e) => {
+  const li = e.target.closest('.ref-item');
+  if (li) openRefModal(refRegion, li.dataset.id);
 });
+document.getElementById('btn-add-ref').addEventListener('click', () => openRefModal(refRegion, null));
 
 function openRefModal(region, itemId) {
   document.getElementById('ref-region').value = region;
