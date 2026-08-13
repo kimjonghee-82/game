@@ -474,6 +474,7 @@ function openEntryModal(entryId, prefill) {
   document.getElementById('entry-date').value = entry.date;
   document.getElementById('entry-time').value = entry.time;
   updateKoreaTimeDisplay();
+  refreshLocationMode();
   document.getElementById('entry-text').value = entry.text || '';
   document.getElementById('entry-vendor').value = entry.vendor || '';
   document.getElementById('entry-place').value = entry.place || '';
@@ -502,9 +503,36 @@ function formatTimeAmPm(hhmm) {
   if (h12 === 0) h12 = 12;
   return `${period} ${h12}:${String(m).padStart(2, '0')}`;
 }
+
+/* 지금 있는 위치가 한국인지 GPS로 확인해서, 한국이면 입력 시간을 한국 시간으로,
+   해외(여행지)면 현지 시간을 메인으로 보여주고 아래 회색 글씨로 한국 시간을 덧붙임 */
+let locationMode = 'unknown'; // 'korea' | 'abroad' | 'unknown'
+function isKoreaCoords(lat, lon) {
+  return lat >= 33.0 && lat <= 38.7 && lon >= 124.5 && lon <= 131.9;
+}
+function refreshLocationMode() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      locationMode = isKoreaCoords(pos.coords.latitude, pos.coords.longitude) ? 'korea' : 'abroad';
+      updateKoreaTimeDisplay();
+    },
+    () => { /* 위치 권한 거부/실패 - 기본(해외 가정) 표시 유지 */ },
+    { timeout: 8000, maximumAge: 10 * 60 * 1000 }
+  );
+}
+
 function updateKoreaTimeDisplay() {
   const t = document.getElementById('entry-time').value;
-  document.getElementById('entry-kr-time').textContent = t ? `🇰🇷 한국 시간 ${toKoreaTime(t)} · 베트남보다 2시간 빠름` : '';
+  const labelText = document.getElementById('entry-time-label-text');
+  const krLine = document.getElementById('entry-kr-time');
+  if (locationMode === 'korea') {
+    labelText.textContent = '시간 (한국)';
+    krLine.textContent = '';
+  } else {
+    labelText.textContent = '현지 시간';
+    krLine.textContent = t ? `🇰🇷 한국 시간 ${toKoreaTime(t)} · 베트남보다 2시간 빠름` : '';
+  }
 }
 document.getElementById('entry-time').addEventListener('input', updateKoreaTimeDisplay);
 

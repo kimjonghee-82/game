@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>하노이 · 사파 여행 플래너</title>
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 
@@ -100,7 +100,7 @@
   <input type="file" id="entry-photo-input" accept="image/*" class="hidden">
 
   <label>날짜 <select id="entry-date"></select></label>
-  <label>현지 시간 <input type="time" id="entry-time"></label>
+  <label><span id="entry-time-label-text">현지 시간</span> <input type="time" id="entry-time"></label>
   <div class="kr-time-text" id="entry-kr-time"></div>
   <label>내용 <input type="text" id="entry-text" placeholder="예: 집 출발"></label>
   <label>상호(장소명) <input type="text" id="entry-vendor" placeholder="예: 캣캣힐스, 르퍼폼 호텔"></label>
@@ -249,6 +249,6 @@
 <script src="https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
