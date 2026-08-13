@@ -1383,13 +1383,13 @@ function buildTranslatePrompt(sourceLang) {
   const langLine = sourceLang && sourceLang !== '자동 감지'
     ? `사진 속 글자는 ${sourceLang}로 되어 있을 가능성이 높습니다.`
     : `사진 속 글자의 언어를 자동으로 판단하세요.`;
-  return `당신은 여행 중 촬영한 사진 속의 외국어 글자를 한국어로 번역하는 도우미입니다. ${langLine}
-사진에 보이는 모든 글자를 정확히 읽고, 자연스러운 한국어로 번역하세요.
+  return `당신은 여행 중 촬영한 사진 속의 외국어 글자를 한국어로 번역하는 전문 번역가입니다. ${langLine}
+사진에 보이는 모든 글자를 정확히 읽으세요. 번역은 단어를 하나씩 그대로 옮기는 축자 번역이 아니라, 문장 전체의 맥락과 상황(메뉴판, 안내문, 표지판, 대화 등)을 파악해서 한국어 원어민이 실제로 쓰는 자연스러운 문장으로 의역하세요.
 아래 JSON 형식으로만 답변하세요 (다른 설명 없이 JSON만):
 {
   "detected_language": "인식된 언어 이름(한국어로, 예: 베트남어/영어/중국어) 또는 null",
   "original_text": "사진에서 읽은 원문 그대로",
-  "translated_text": "한국어 번역"
+  "translated_text": "문맥에 맞게 자연스럽게 의역한 한국어 번역"
 }
 사진에서 글자를 전혀 찾을 수 없으면 original_text와 translated_text를 빈 문자열로 답하세요.
 추론 과정이나 설명을 출력하지 마세요. <think> 태그를 쓰지 말고, 다른 텍스트 없이 오직 위 JSON 객체 하나만 바로 출력하세요.`;
@@ -1424,9 +1424,10 @@ document.getElementById('translate-photo-input').addEventListener('change', asyn
   const thumb = await resizeImageToDataUrl(file, 400, 0.6);
   document.getElementById('translate-thumb').src = thumb;
   document.getElementById('translate-thumb-wrap').classList.remove('hidden');
+  document.getElementById('translate-scan-line').classList.remove('hidden');
   pendingTranslatePhoto = { thumb };
 
-  setStatus('AI가 사진 속 글자를 번역하는 중...');
+  setStatus('스캔 중... AI가 문맥에 맞게 번역하고 있어요');
   try {
     const model = resolveGroqVisionModel(settings.groqVisionModel);
     const prompt = buildTranslatePrompt(settings.translateSourceLang);
@@ -1437,6 +1438,8 @@ document.getElementById('translate-photo-input').addEventListener('change', asyn
   } catch (err) {
     setStatus('번역 실패: ' + err.message);
     toast('번역 실패: ' + err.message, 5000);
+  } finally {
+    document.getElementById('translate-scan-line').classList.add('hidden');
   }
 });
 
@@ -1465,6 +1468,7 @@ function openTranslateModal(translateId) {
   document.getElementById('translate-id').value = translateId || '';
   document.getElementById('translate-status').textContent = '';
   document.getElementById('translate-delete-btn').classList.toggle('hidden', !translateId);
+  document.getElementById('translate-scan-line').classList.add('hidden');
 
   if (translateId) {
     const t = loadTranslations().find(x => x.id === translateId);

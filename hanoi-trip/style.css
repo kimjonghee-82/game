@@ -135,8 +135,8 @@ body{
   position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:60;
 }
 .fab-translate{
-  position:fixed;left:calc(50% + 43px);bottom:26px;z-index:60;
-  width:52px;height:52px;font-size:24px;
+  position:fixed;right:18px;bottom:26px;left:auto;z-index:60;
+  width:52px;height:52px;color:#fff;
   background:#2b2b2b;box-shadow:0 6px 16px rgba(0,0,0,.35);
 }
 .fab-translate:active{background:#111}
@@ -203,8 +203,21 @@ body{
 .video-title{font-size:14px;font-weight:bold;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ===== 카메라 번역 ===== */
-.translate-thumb-wrap{width:100%;border-radius:10px;overflow:hidden;margin-bottom:10px;background:#000}
+.translate-thumb-wrap{width:100%;border-radius:10px;overflow:hidden;margin-bottom:10px;background:#000;position:relative}
 .translate-thumb-wrap img{width:100%;max-height:220px;object-fit:contain;display:block;margin:0 auto}
+.translate-scan-line{
+  position:absolute;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,transparent,#5ad1ff,transparent);
+  box-shadow:0 0 10px 2px rgba(90,209,255,.8);
+  animation:scanSweep 1.6s ease-in-out infinite;
+}
+@keyframes scanSweep{
+  0%{top:0%}
+  50%{top:calc(100% - 3px)}
+  100%{top:0%}
+}
+.translate-main-label{font-weight:bold}
+.translate-main-text{font-size:16px;font-weight:bold;color:var(--ink);background:#fafafa}
 .translate-history-list{list-style:none;margin:8px 0 0;padding:0;max-height:220px;overflow-y:auto;border-top:1px solid var(--line)}
 .translate-history-item{padding:10px 2px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;gap:8px;align-items:flex-start}
 .translate-history-item:hover{background:#fafafa}
