@@ -73,44 +73,43 @@ body{
 .btn.danger{background:#fff;border-color:#c0392b;color:#c0392b}
 .btn.small{padding:4px 10px;font-size:12px}
 
-/* ===== 일정 그리드 ===== */
-.grid-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
-#itinerary-grid{border-collapse:collapse;width:100%;min-width:900px}
-#itinerary-grid th, #itinerary-grid td{
-  border:1px solid var(--line);
-  padding:4px 6px;
-  font-size:12.5px;
-  vertical-align:top;
-  min-width:118px;
+/* ===== 날짜 이동 바 ===== */
+.day-nav{
+  display:flex;align-items:center;gap:8px;
+  background:var(--header);color:#fff;
+  border-radius:10px;padding:8px 10px;margin-bottom:12px;
 }
-#itinerary-grid thead th{
-  position:sticky;top:0;z-index:5;
-  background:#5a7f95;color:#fff;
-  text-align:center;padding:8px 4px;font-size:13px;
+.day-nav-label{flex:1;text-align:center;font-weight:bold;font-size:15px}
+.day-nav-btn{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.3);color:#fff;font-weight:bold}
+.day-nav-btn:disabled{opacity:.35;cursor:default}
+.day-nav #itin-today-btn, .day-nav #exp-today-btn{color:#fff;border-color:rgba(255,255,255,.4)}
+
+/* ===== 일정: 하루 단위 리스트 ===== */
+.day-view{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.day-row{display:flex;border-bottom:1px solid var(--line);min-height:38px}
+.day-row:last-child{border-bottom:none}
+.day-row:hover{background:#fbf6ee;cursor:pointer}
+.day-row-time{
+  flex:0 0 56px;padding:8px 6px;text-align:center;
+  background:#eef2f4;color:var(--muted);font-weight:bold;font-size:12.5px;
 }
-#itinerary-grid thead th.time-col-head{left:0;z-index:10;background:var(--header)}
-#itinerary-grid td.time-col, #itinerary-grid th.time-col-head{
-  position:sticky;left:0;z-index:4;
-  background:#eef2f4;text-align:center;font-weight:bold;color:var(--muted);
-  min-width:60px;width:60px;
-}
-#itinerary-grid td.day-cell{cursor:pointer;height:34px}
-#itinerary-grid td.day-cell:hover{background:#fbf6ee}
-#itinerary-grid tr.lodging-row td{background:#fff7e6;font-weight:bold}
-#itinerary-grid tr.lodging-row td.time-col{background:#f7e9c8}
+.day-row-content{flex:1;padding:6px 10px;display:flex;flex-direction:column;gap:4px;justify-content:center}
+.day-row.lodging-row{background:#fff7e6}
+.day-row.lodging-row .day-row-time{background:#f7e9c8}
 
 .entry-chip{
   background:var(--accent-soft);
   border-left:3px solid var(--accent);
   border-radius:4px;
-  padding:2px 5px;
-  margin-bottom:3px;
-  font-size:11.5px;
+  padding:4px 7px;
+  font-size:13px;
   line-height:1.4;
 }
-.entry-chip .chip-time{font-weight:bold;color:var(--accent-dark);margin-right:3px}
-.entry-chip .chip-cost{display:block;color:var(--green);font-size:11px}
+.entry-chip .chip-time{font-weight:bold;color:var(--accent-dark);margin-right:5px}
+.entry-chip .chip-cost{display:block;color:var(--green);font-size:12px}
 .entry-chip.has-photo::after{content:" 📷";}
+
+.grid-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
 
 /* ===== 비용 ===== */
 .summary-cards{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
@@ -126,6 +125,16 @@ body{
 #expense-table thead th{background:var(--header);color:#fff}
 #expense-table tbody tr:hover{background:#fbf6ee;cursor:pointer}
 .tag{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;background:#eef2f4;color:var(--header)}
+
+/* 좁은 화면에서는 표를 카드 형태로 전환 */
+@media (max-width:640px){
+  #expense-table thead{display:none}
+  #expense-table, #expense-table tbody, #expense-table tr, #expense-table td{display:block;width:100%}
+  #expense-table tr{border:1px solid var(--line);border-radius:10px;margin-bottom:10px;overflow:hidden}
+  #expense-table td{border:none;border-bottom:1px solid var(--line);padding:6px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:right}
+  #expense-table td:last-child{border-bottom:none}
+  #expense-table td::before{content:attr(data-label);font-weight:bold;color:var(--muted);font-size:11px;text-align:left}
+}
 
 /* ===== 참고사항 ===== */
 .ref-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}
@@ -187,4 +196,20 @@ body{
   position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
   background:#2b2b28;color:#fff;padding:10px 18px;border-radius:20px;
   font-size:13px;z-index:500;box-shadow:0 4px 16px rgba(0,0,0,.3);
+  max-width:90%;text-align:center;
+}
+
+/* ===== 모바일 전반 최적화 ===== */
+@media (max-width:600px){
+  #app-header{padding:8px 10px;gap:8px}
+  #app-header h1{font-size:14px}
+  .tab-btn{padding:7px 10px;font-size:13px}
+  #btn-settings{padding:6px 9px;font-size:13px}
+  #app-main{padding:10px}
+  .toolbar{gap:6px}
+  .toolbar .btn{flex:1 1 auto;text-align:center;font-size:13px;padding:9px 8px}
+  .day-nav{padding:6px 6px}
+  .day-nav-btn{font-size:12px;padding:7px 8px}
+  .day-nav-label{font-size:13px}
+  .modal{width:94%;padding:16px 16px;max-height:92vh}
 }

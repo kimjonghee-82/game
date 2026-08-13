@@ -23,20 +23,30 @@
 
   <!-- ================= 일정 ================= -->
   <section id="tab-itinerary" class="tab-panel active">
+    <div class="day-nav">
+      <button id="itin-prev-day" class="btn small day-nav-btn">◀ 이전날</button>
+      <div class="day-nav-label" id="itin-day-label"></div>
+      <button id="itin-next-day" class="btn small day-nav-btn">다음날 ▶</button>
+      <button id="itin-today-btn" class="btn small ghost">오늘</button>
+    </div>
     <div class="toolbar">
       <button id="btn-add-entry" class="btn primary">+ 일정 추가</button>
       <button id="btn-upload-photo" class="btn">📷 사진으로 일정 추가</button>
       <button id="btn-add-day" class="btn ghost">+ 날짜 추가</button>
       <button id="btn-export-sheet" class="btn ghost">📊 구글 시트로 내보내기</button>
-      <span id="itinerary-status" class="status-text"></span>
     </div>
-    <div class="grid-wrap">
-      <table id="itinerary-grid"></table>
-    </div>
+    <div class="status-text" id="itinerary-status"></div>
+    <div id="itinerary-day-view" class="day-view"></div>
   </section>
 
   <!-- ================= 비용 ================= -->
   <section id="tab-expense" class="tab-panel">
+    <div class="day-nav">
+      <button id="exp-prev-day" class="btn small day-nav-btn">◀ 이전날</button>
+      <div class="day-nav-label" id="exp-day-label"></div>
+      <button id="exp-next-day" class="btn small day-nav-btn">다음날 ▶</button>
+      <button id="exp-today-btn" class="btn small ghost">오늘</button>
+    </div>
     <div class="toolbar">
       <button id="btn-add-expense" class="btn primary">+ 비용 추가</button>
       <button id="btn-upload-receipt" class="btn">📷 영수증으로 추가</button>
@@ -47,7 +57,7 @@
       <table id="expense-table">
         <thead>
           <tr>
-            <th>날짜</th><th>시간</th><th>장소/항목</th><th>분류</th>
+            <th>시간</th><th>장소/항목</th><th>분류</th>
             <th>금액</th><th>원화 환산</th><th>메모</th><th>출처</th><th></th>
           </tr>
         </thead>

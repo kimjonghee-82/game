@@ -293,6 +293,56 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
+/* ============================== 날짜 이동(하루 단위 보기) ============================== */
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function computeInitialViewDate() {
+  const dates = getTripDates();
+  if (!dates.length) return null;
+  const t = todayStr();
+  if (t < dates[0]) return dates[0];
+  if (t > dates[dates.length - 1]) return dates[dates.length - 1];
+  return dates.includes(t) ? t : dates[0];
+}
+
+let viewDate = computeInitialViewDate();
+
+function shiftViewDate(delta) {
+  const dates = getTripDates();
+  let idx = dates.indexOf(viewDate);
+  if (idx === -1) idx = 0;
+  idx = Math.min(dates.length - 1, Math.max(0, idx + delta));
+  viewDate = dates[idx];
+  renderItineraryGrid();
+  renderExpenseTab();
+}
+function goToToday() {
+  viewDate = computeInitialViewDate();
+  renderItineraryGrid();
+  renderExpenseTab();
+}
+
+function renderDayNav(prefix) {
+  const dates = getTripDates();
+  if (!dates.includes(viewDate)) viewDate = computeInitialViewDate();
+  const idx = dates.indexOf(viewDate);
+  document.getElementById(prefix + '-day-label').textContent =
+    `${formatDateLabel(viewDate)} · ${idx + 1}/${dates.length}일차`;
+  document.getElementById(prefix + '-prev-day').disabled = idx <= 0;
+  document.getElementById(prefix + '-next-day').disabled = idx >= dates.length - 1;
+}
+
+document.getElementById('itin-prev-day').addEventListener('click', () => shiftViewDate(-1));
+document.getElementById('itin-next-day').addEventListener('click', () => shiftViewDate(1));
+document.getElementById('itin-today-btn').addEventListener('click', goToToday);
+document.getElementById('exp-prev-day').addEventListener('click', () => shiftViewDate(-1));
+document.getElementById('exp-next-day').addEventListener('click', () => shiftViewDate(1));
+document.getElementById('exp-today-btn').addEventListener('click', goToToday);
+
 /* ============================== 일정 탭 ============================== */
 
 function fillDateSelect(selectEl, selectedDate) {
@@ -302,34 +352,28 @@ function fillDateSelect(selectEl, selectedDate) {
 }
 
 function renderItineraryGrid() {
-  const dates = getTripDates();
+  renderDayNav('itin');
   const entries = loadItinerary();
-  const table = document.getElementById('itinerary-grid');
+  const dayEntries = entries.filter(e => e.date === viewDate && !e.lodging);
+  const lodgingEntries = entries.filter(e => e.date === viewDate && e.lodging);
 
-  let thead = '<thead><tr><th class="time-col-head">시간</th>' +
-    dates.map(d => `<th>${formatDateLabel(d)}</th>`).join('') + '</tr></thead>';
-
-  let rows = '';
+  let html = '';
   for (let h = 0; h < 24; h++) {
-    rows += `<tr><td class="time-col">${h}:00</td>`;
-    for (const d of dates) {
-      const cellEntries = entries.filter(e => e.date === d && !e.lodging && parseInt(e.time.split(':')[0], 10) === h);
-      const chips = cellEntries.map(e => renderChip(e)).join('');
-      rows += `<td class="day-cell" data-date="${d}" data-hour="${h}">${chips}</td>`;
-    }
-    rows += '</tr>';
+    const cellEntries = dayEntries.filter(e => parseInt(e.time.split(':')[0], 10) === h);
+    const chips = cellEntries.map(e => renderChip(e)).join('');
+    html += `<div class="day-row" data-hour="${h}">
+      <div class="day-row-time">${h}:00</div>
+      <div class="day-row-content">${chips}</div>
+    </div>`;
   }
+  const lodgingText = lodgingEntries.map(e => escapeHtml(e.text)).join(', ');
+  html += `<div class="day-row lodging-row" data-lodging="1">
+    <div class="day-row-time">숙소</div>
+    <div class="day-row-content">${lodgingText || '<span style="color:#bbb">+ 숙소 추가</span>'}</div>
+  </div>`;
 
-  let lodgingRow = '<tr class="lodging-row"><td class="time-col">숙소</td>';
-  for (const d of dates) {
-    const lodgingEntries = entries.filter(e => e.date === d && e.lodging);
-    const text = lodgingEntries.map(e => e.text).join(', ');
-    lodgingRow += `<td class="day-cell lodging-cell" data-date="${d}" data-lodging="1">${text ? escapeHtml(text) : '<span style="color:#bbb">+ 숙소 추가</span>'}</td>`;
-  }
-  lodgingRow += '</tr>';
-
-  table.innerHTML = thead + '<tbody>' + rows + lodgingRow + '</tbody>';
-  document.getElementById('itinerary-status').textContent = `총 ${entries.length}개 일정 · ${dates.length}일`;
+  document.getElementById('itinerary-day-view').innerHTML = html;
+  document.getElementById('itinerary-status').textContent = `이 날 ${dayEntries.length}개 일정`;
 }
 
 function renderChip(e) {
@@ -347,23 +391,23 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-document.getElementById('itinerary-grid').addEventListener('click', (e) => {
+document.getElementById('itinerary-day-view').addEventListener('click', (e) => {
   const chip = e.target.closest('.entry-chip');
   if (chip) { openEntryModal(chip.dataset.entryId); return; }
-  const lodgingCell = e.target.closest('.lodging-cell');
-  if (lodgingCell) {
-    const existing = loadItinerary().find(x => x.date === lodgingCell.dataset.date && x.lodging);
+  const lodgingRow = e.target.closest('.lodging-row');
+  if (lodgingRow) {
+    const existing = loadItinerary().find(x => x.date === viewDate && x.lodging);
     if (existing) openEntryModal(existing.id);
-    else openEntryModal(null, { date: lodgingCell.dataset.date, time: '15:00', lodging: true });
+    else openEntryModal(null, { date: viewDate, time: '15:00', lodging: true });
     return;
   }
-  const cell = e.target.closest('td.day-cell');
-  if (cell) {
-    openEntryModal(null, { date: cell.dataset.date, time: `${cell.dataset.hour}:00` });
+  const row = e.target.closest('.day-row[data-hour]');
+  if (row) {
+    openEntryModal(null, { date: viewDate, time: `${String(row.dataset.hour).padStart(2, '0')}:00` });
   }
 });
 
-document.getElementById('btn-add-entry').addEventListener('click', () => openEntryModal(null, {}));
+document.getElementById('btn-add-entry').addEventListener('click', () => openEntryModal(null, { date: viewDate }));
 
 function openEntryModal(entryId, prefill) {
   const isNew = !entryId;
@@ -372,7 +416,7 @@ function openEntryModal(entryId, prefill) {
   fillDateSelect(document.getElementById('entry-date'));
   document.getElementById('entry-delete-btn').classList.toggle('hidden', isNew);
 
-  let entry = { date: getTripDates()[0], time: '09:00', text: '', category: '이동', lodging: false, expenseId: null };
+  let entry = { date: viewDate || getTripDates()[0], time: '09:00', text: '', category: '이동', lodging: false, expenseId: null };
   if (!isNew) {
     entry = loadItinerary().find(x => x.id === entryId) || entry;
   } else if (prefill) {
@@ -488,29 +532,29 @@ function deleteExpense(expenseId) {
 }
 
 function renderExpenseTab() {
-  const expenses = loadExpenses().slice().sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  renderDayNav('exp');
+  const expenses = loadExpenses().filter(e => e.date === viewDate).sort((a, b) => a.time.localeCompare(b.time));
   const tbody = document.getElementById('expense-tbody');
   tbody.innerHTML = expenses.map(exp => `
     <tr data-id="${exp.id}">
-      <td>${exp.date}</td>
-      <td>${exp.time}</td>
-      <td>${escapeHtml(exp.place || '')}</td>
-      <td><span class="tag">${exp.category}</span></td>
-      <td>${fmtAmount(exp.amount)} ${exp.currency}</td>
-      <td>${exp.krw ? fmtAmount(Math.round(exp.krw)) + '원' : (exp.currency === 'KRW' ? '' : '<span style="color:#bbb">조회중...</span>')}</td>
-      <td>${escapeHtml(exp.memo || '')}</td>
-      <td><span class="tag">${sourceLabel(exp.source)}</span></td>
-      <td><button class="btn small danger" data-del="${exp.id}">삭제</button></td>
+      <td data-label="시간">${exp.time}</td>
+      <td data-label="장소/항목">${escapeHtml(exp.place || '')}</td>
+      <td data-label="분류"><span class="tag">${exp.category}</span></td>
+      <td data-label="금액">${fmtAmount(exp.amount)} ${exp.currency}</td>
+      <td data-label="원화 환산">${exp.krw ? fmtAmount(Math.round(exp.krw)) + '원' : (exp.currency === 'KRW' ? '' : '<span style="color:#bbb">조회중...</span>')}</td>
+      <td data-label="메모">${escapeHtml(exp.memo || '')}</td>
+      <td data-label="출처"><span class="tag">${sourceLabel(exp.source)}</span></td>
+      <td data-label=""><button class="btn small danger" data-del="${exp.id}">삭제</button></td>
     </tr>`).join('');
 
   const totalKrw = expenses.reduce((sum, e) => sum + (e.currency === 'KRW' ? e.amount : (e.krw || 0)), 0);
   const missing = expenses.filter(e => e.currency !== 'KRW' && !e.krw).length;
   document.getElementById('expense-summary').innerHTML = `
-    <div class="summary-card"><div class="label">총 항목</div><div class="value">${expenses.length}건</div></div>
-    <div class="summary-card"><div class="label">합계 (원화 환산)</div><div class="value">${fmtAmount(Math.round(totalKrw))}원</div></div>
+    <div class="summary-card"><div class="label">이 날 항목</div><div class="value">${expenses.length}건</div></div>
+    <div class="summary-card"><div class="label">이 날 합계 (원화 환산)</div><div class="value">${fmtAmount(Math.round(totalKrw))}원</div></div>
     <div class="summary-card"><div class="label">환율 미조회</div><div class="value">${missing}건</div></div>
   `;
-  document.getElementById('expense-status').textContent = expenses.length ? '행을 클릭하면 수정할 수 있습니다' : '아직 등록된 비용이 없습니다';
+  document.getElementById('expense-status').textContent = expenses.length ? '행을 클릭하면 수정할 수 있습니다' : '이 날 등록된 비용이 없습니다';
 
   expenses.filter(e => e.currency !== 'KRW' && !e.krw).forEach(e => refreshExpenseKrw(e.id));
 }
@@ -538,7 +582,7 @@ function openExpenseModal(expenseId) {
   document.getElementById('expense-id').value = expenseId || '';
   document.getElementById('expense-delete-btn').classList.toggle('hidden', isNew);
 
-  let exp = { date: getTripDates()[0], time: '12:00', place: '', category: '식사', amount: '', currency: 'VND', memo: '' };
+  let exp = { date: viewDate || getTripDates()[0], time: '12:00', place: '', category: '식사', amount: '', currency: 'VND', memo: '' };
   if (!isNew) exp = loadExpenses().find(x => x.id === expenseId) || exp;
 
   document.getElementById('expense-date').value = exp.date;
@@ -921,7 +965,7 @@ function applyPhotoAnalysisResult(exif, place, vision) {
   const cats = isExpenseMode ? EXPENSE_CATEGORIES : ITINERARY_CATEGORIES;
   catSelect.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join('');
 
-  const date = (vision && vision.date_on_receipt) || (exif.takenAt && exif.takenAt.date) || getTripDates()[0];
+  const date = (vision && vision.date_on_receipt) || (exif.takenAt && exif.takenAt.date) || viewDate || getTripDates()[0];
   const time = (vision && vision.time_on_receipt) || (exif.takenAt && exif.takenAt.time) || '12:00';
   const textParts = [];
   if (vision && vision.is_receipt && vision.vendor) textParts.push(vision.vendor);
@@ -930,7 +974,7 @@ function applyPhotoAnalysisResult(exif, place, vision) {
   if (vision && vision.description && !isExpenseMode) textParts.push(vision.description);
   const text = textParts.filter(Boolean).join(' - ') || place || '사진 기록';
 
-  fillDateSelect(document.getElementById('photo-date'), getTripDates().includes(date) ? date : getTripDates()[0]);
+  fillDateSelect(document.getElementById('photo-date'), getTripDates().includes(date) ? date : viewDate);
   document.getElementById('photo-time').value = time;
   document.getElementById('photo-text').value = text;
   if (vision && vision.category) {
@@ -1102,6 +1146,7 @@ document.getElementById('settings-save-btn').addEventListener('click', () => {
   s.googleClientId = document.getElementById('settings-google-client-id').value.trim();
   saveSettings(s);
   renderItineraryGrid();
+  renderExpenseTab();
   closeModal('modal-settings');
   toast('설정을 저장했습니다');
 });
