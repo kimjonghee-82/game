@@ -11,7 +11,10 @@ const STORAGE_KEYS = {
   phrases: 'hanoi_trip_phrases_v1',
   fxCache: 'hanoi_trip_fx_cache_v1',
   otherVideos: 'hanoi_trip_other_videos_v1',
+  translations: 'hanoi_trip_translations_v1',
 };
+
+const TRANSLATE_SOURCE_LANGS = ['자동 감지', '베트남어', '영어', '중국어', '일본어'];
 
 const ITINERARY_CATEGORIES = ['이동', '식사', '관광', '숙소', '쇼핑', '기타'];
 const EXPENSE_CATEGORIES = ['교통', '식사', '관광/입장료', '숙박', '쇼핑', '기타'];
@@ -234,6 +237,7 @@ function loadSettings() {
     groqVisionModel: '',
     googleClientId: '',
     googleSpreadsheetId: '',
+    translateSourceLang: '베트남어',
   });
 }
 function saveSettings(s) { save(STORAGE_KEYS.settings, s); }
@@ -250,6 +254,8 @@ function loadFxCache() { return load(STORAGE_KEYS.fxCache, {}); }
 function saveFxCache(v) { save(STORAGE_KEYS.fxCache, v); }
 function loadVideos() { return load(STORAGE_KEYS.otherVideos, []); }
 function saveVideos(v) { save(STORAGE_KEYS.otherVideos, v); }
+function loadTranslations() { return load(STORAGE_KEYS.translations, []); }
+function saveTranslations(v) { save(STORAGE_KEYS.translations, v); }
 
 function seedDefaultsIfEmpty() {
   if (!loadReference()) {
@@ -1225,7 +1231,15 @@ function resolveGroqVisionModel(saved) {
   return model;
 }
 
-async function analyzeImageWithGroqVision(dataUrl, apiKey, model) {
+/** 답변에서 <think>...</think> 추론 블록을 제거. 잘려서 닫는 태그가 없으면 <think> 이후 전체를 버립니다. */
+function stripThinkTags(rawText) {
+  if (!rawText.includes('<think>')) return rawText;
+  return rawText.includes('</think>')
+    ? rawText.replace(/<think>[\s\S]*?<\/think>/g, '')
+    : rawText.slice(0, rawText.indexOf('<think>'));
+}
+
+async function analyzeImageWithGroqVision(dataUrl, apiKey, model, prompt) {
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -1240,7 +1254,7 @@ async function analyzeImageWithGroqVision(dataUrl, apiKey, model) {
         {
           role: 'user',
           content: [
-            { type: 'text', text: RECEIPT_ANALYSIS_PROMPT },
+            { type: 'text', text: prompt || RECEIPT_ANALYSIS_PROMPT },
             { type: 'image_url', image_url: { url: dataUrl } },
           ],
         },
@@ -1254,10 +1268,7 @@ async function analyzeImageWithGroqVision(dataUrl, apiKey, model) {
   const json = await res.json();
   const rawText = (json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || '';
   // 일부 Groq 모델(qwen3.6 등)은 답변 전에 <think>...</think> 추론 과정을 먼저 출력합니다.
-  // 답이 잘려서 </think>가 없을 수도 있으므로, 닫히지 않은 경우 <think> 이후 전체를 버립니다.
-  const text = rawText.includes('<think>')
-    ? (rawText.includes('</think>') ? rawText.replace(/<think>[\s\S]*?<\/think>/g, '') : rawText.slice(0, rawText.indexOf('<think>')))
-    : rawText;
+  const text = stripThinkTags(rawText);
   const parsed = parseJsonLoose(text);
   if (!parsed) throw new Error('AI 응답을 이해하지 못했습니다: ' + (text.trim().slice(0, 150) || rawText.trim().slice(0, 150) || '(빈 응답)'));
   return parsed;
@@ -1366,6 +1377,139 @@ document.getElementById('expense-photo-input').addEventListener('change', async 
   if (memoParts.length) document.getElementById('expense-memo').value = memoParts.join(' · ');
 });
 
+/* ============================== 카메라 번역 ============================== */
+
+function buildTranslatePrompt(sourceLang) {
+  const langLine = sourceLang && sourceLang !== '자동 감지'
+    ? `사진 속 글자는 ${sourceLang}로 되어 있을 가능성이 높습니다.`
+    : `사진 속 글자의 언어를 자동으로 판단하세요.`;
+  return `당신은 여행 중 촬영한 사진 속의 외국어 글자를 한국어로 번역하는 도우미입니다. ${langLine}
+사진에 보이는 모든 글자를 정확히 읽고, 자연스러운 한국어로 번역하세요.
+아래 JSON 형식으로만 답변하세요 (다른 설명 없이 JSON만):
+{
+  "detected_language": "인식된 언어 이름(한국어로, 예: 베트남어/영어/중국어) 또는 null",
+  "original_text": "사진에서 읽은 원문 그대로",
+  "translated_text": "한국어 번역"
+}
+사진에서 글자를 전혀 찾을 수 없으면 original_text와 translated_text를 빈 문자열로 답하세요.
+추론 과정이나 설명을 출력하지 마세요. <think> 태그를 쓰지 말고, 다른 텍스트 없이 오직 위 JSON 객체 하나만 바로 출력하세요.`;
+}
+
+let pendingTranslatePhoto = null;
+
+document.getElementById('btn-translate-camera').addEventListener('click', () => {
+  const settings = loadSettings();
+  if (!settings.groqApiKey) {
+    toast('먼저 설정에서 Groq API 키를 입력해주세요');
+    openSettingsModal();
+    return;
+  }
+  document.getElementById('translate-photo-input').click();
+});
+document.getElementById('translate-camera-btn').addEventListener('click', () => {
+  document.getElementById('translate-photo-input').click();
+});
+
+document.getElementById('translate-photo-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+
+  openTranslateModal(null);
+  const setStatus = (t) => { document.getElementById('translate-status').textContent = t; };
+  const settings = loadSettings();
+
+  setStatus('이미지 처리 중...');
+  const resized = await resizeImageToDataUrl(file, 1024, 0.75);
+  const thumb = await resizeImageToDataUrl(file, 400, 0.6);
+  document.getElementById('translate-thumb').src = thumb;
+  document.getElementById('translate-thumb-wrap').classList.remove('hidden');
+  pendingTranslatePhoto = { thumb };
+
+  setStatus('AI가 사진 속 글자를 번역하는 중...');
+  try {
+    const model = resolveGroqVisionModel(settings.groqVisionModel);
+    const prompt = buildTranslatePrompt(settings.translateSourceLang);
+    const result = await analyzeImageWithGroqVision(resized, settings.groqApiKey, model, prompt);
+    document.getElementById('translate-original').value = result.original_text || '';
+    document.getElementById('translate-translated').value = result.translated_text || '';
+    setStatus(result.translated_text ? '번역 완료 — 확인하고 저장하세요' : '사진에서 글자를 찾지 못했습니다');
+  } catch (err) {
+    setStatus('번역 실패: ' + err.message);
+    toast('번역 실패: ' + err.message, 5000);
+  }
+});
+
+function renderTranslateHistory() {
+  const list = loadTranslations();
+  const historyEl = document.getElementById('translate-history-list');
+  document.getElementById('translate-history-title').classList.toggle('hidden', list.length === 0);
+  historyEl.innerHTML = list.slice().reverse().map(t => `
+    <li class="translate-history-item" data-id="${t.id}">
+      ${t.thumb ? `<img class="th-thumb" src="${t.thumb}" alt="">` : ''}
+      <div class="th-text">
+        <div class="th-translated">${escapeHtml(t.translated || '')}</div>
+        <div class="th-original">${escapeHtml(t.original || '')}</div>
+      </div>
+    </li>`).join('');
+}
+
+document.getElementById('translate-history-list').addEventListener('click', (e) => {
+  const li = e.target.closest('.translate-history-item');
+  if (!li) return;
+  const t = loadTranslations().find(x => x.id === li.dataset.id);
+  if (t) openTranslateModal(t.id);
+});
+
+function openTranslateModal(translateId) {
+  document.getElementById('translate-id').value = translateId || '';
+  document.getElementById('translate-status').textContent = '';
+  document.getElementById('translate-delete-btn').classList.toggle('hidden', !translateId);
+
+  if (translateId) {
+    const t = loadTranslations().find(x => x.id === translateId);
+    document.getElementById('translate-original').value = (t && t.original) || '';
+    document.getElementById('translate-translated').value = (t && t.translated) || '';
+    document.getElementById('translate-thumb-wrap').classList.toggle('hidden', !(t && t.thumb));
+    if (t && t.thumb) document.getElementById('translate-thumb').src = t.thumb;
+    pendingTranslatePhoto = t ? { thumb: t.thumb } : null;
+  } else {
+    document.getElementById('translate-original').value = '';
+    document.getElementById('translate-translated').value = '';
+    document.getElementById('translate-thumb-wrap').classList.add('hidden');
+    pendingTranslatePhoto = null;
+  }
+
+  renderTranslateHistory();
+  openModal('modal-translate');
+}
+
+document.getElementById('translate-cancel-btn').addEventListener('click', () => closeModal('modal-translate'));
+
+document.getElementById('translate-save-btn').addEventListener('click', () => {
+  const id = document.getElementById('translate-id').value;
+  const original = document.getElementById('translate-original').value.trim();
+  const translated = document.getElementById('translate-translated').value.trim();
+  if (!translated) { toast('번역 내용을 입력해주세요'); return; }
+
+  const list = loadTranslations();
+  let t = list.find(x => x.id === id);
+  if (!t) { t = { id: uid(), date: todayStr() }; list.push(t); }
+  Object.assign(t, { original, translated, thumb: (pendingTranslatePhoto && pendingTranslatePhoto.thumb) || t.thumb || '' });
+  saveTranslations(list);
+  document.getElementById('translate-id').value = t.id;
+  document.getElementById('translate-delete-btn').classList.remove('hidden');
+  renderTranslateHistory();
+  toast('번역을 저장했습니다');
+});
+
+document.getElementById('translate-delete-btn').addEventListener('click', () => {
+  const id = document.getElementById('translate-id').value;
+  saveTranslations(loadTranslations().filter(x => x.id !== id));
+  closeModal('modal-translate');
+  toast('삭제했습니다');
+});
+
 /* ============================== 구글 시트 내보내기 ============================== */
 
 function buildGridData() {
@@ -1446,12 +1590,16 @@ async function writeItineraryToSheet(accessToken) {
 
 /* ================================ 설정 ================================ */
 
+document.getElementById('settings-translate-lang').innerHTML =
+  TRANSLATE_SOURCE_LANGS.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+
 function openSettingsModal() {
   const s = loadSettings();
   document.getElementById('settings-start-date').value = s.startDate;
   document.getElementById('settings-end-date').value = s.endDate;
   document.getElementById('settings-groq-key').value = s.groqApiKey || '';
   document.getElementById('settings-groq-model').value = (s.groqVisionModel && !DEPRECATED_GROQ_VISION_MODELS.includes(s.groqVisionModel)) ? s.groqVisionModel : '';
+  document.getElementById('settings-translate-lang').value = s.translateSourceLang || '베트남어';
   document.getElementById('settings-google-client-id').value = s.googleClientId || '';
   document.getElementById('settings-export-code').value = '';
   document.getElementById('settings-import-code').value = '';
@@ -1466,6 +1614,7 @@ document.getElementById('settings-save-btn').addEventListener('click', () => {
   s.endDate = document.getElementById('settings-end-date').value || s.endDate;
   s.groqApiKey = document.getElementById('settings-groq-key').value.trim();
   s.groqVisionModel = document.getElementById('settings-groq-model').value.trim();
+  s.translateSourceLang = document.getElementById('settings-translate-lang').value;
   s.googleClientId = document.getElementById('settings-google-client-id').value.trim();
   saveSettings(s);
   renderItineraryGrid();
@@ -1491,6 +1640,7 @@ document.getElementById('settings-export-btn').addEventListener('click', () => {
     endDate: document.getElementById('settings-end-date').value || s.endDate,
     groqApiKey: document.getElementById('settings-groq-key').value.trim(),
     groqVisionModel: document.getElementById('settings-groq-model').value.trim(),
+    translateSourceLang: document.getElementById('settings-translate-lang').value,
     googleClientId: document.getElementById('settings-google-client-id').value.trim(),
   };
   const code = toBase64Unicode(JSON.stringify(current));
@@ -1528,6 +1678,7 @@ document.getElementById('settings-import-btn').addEventListener('click', () => {
   document.getElementById('settings-end-date').value = s.endDate;
   document.getElementById('settings-groq-key').value = s.groqApiKey || '';
   document.getElementById('settings-groq-model').value = (s.groqVisionModel && !DEPRECATED_GROQ_VISION_MODELS.includes(s.groqVisionModel)) ? s.groqVisionModel : '';
+  document.getElementById('settings-translate-lang').value = s.translateSourceLang || '베트남어';
   document.getElementById('settings-google-client-id').value = s.googleClientId || '';
   document.getElementById('settings-import-code').value = '';
   renderItineraryGrid();
