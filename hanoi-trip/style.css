@@ -138,15 +138,11 @@ body{
 .grid-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
 
 /* ===== 비용 ===== */
-.summary-cards{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
-.summary-card{
-  background:var(--panel);border:1px solid var(--line);border-radius:10px;
-  padding:10px 16px;min-width:140px;
-}
-.summary-card .label{font-size:12px;color:var(--muted)}
-.summary-card .value{font-size:18px;font-weight:bold;margin-top:2px;color:var(--ink)}
+.expense-total{text-align:center;padding:18px 12px 20px;touch-action:pan-y}
+.expense-total-krw{font-size:32px;font-weight:bold;color:var(--ink)}
+.expense-total-orig{font-size:13px;color:var(--muted);margin-top:4px;min-height:16px}
 
-.expense-list{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.expense-list{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;padding-bottom:84px;touch-action:pan-y}
 .exp-empty{padding:26px 12px;text-align:center;color:var(--muted);font-size:13.5px}
 .exp-row{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer}
 .exp-row:last-child{border-bottom:none}

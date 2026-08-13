@@ -390,14 +390,17 @@ document.getElementById('exp-prev-day').addEventListener('click', () => shiftVie
 document.getElementById('exp-next-day').addEventListener('click', () => shiftViewDate(1));
 document.getElementById('exp-today-btn').addEventListener('click', goToToday);
 
-/** 일정 화면을 좌우로 스와이프해서 하루씩 이동 */
-function swipeShiftDay(delta) {
-  const before = viewDate;
-  shiftViewDate(delta);
-  if (viewDate === before) return; // 첫날/마지막날 경계 - 변화 없음
-  playSwipeAnim(document.getElementById('itinerary-day-view'), delta);
+/** 일정/비용 화면을 좌우로 스와이프해서 하루씩 이동 */
+function swipeShiftDayFor(elId) {
+  return function (delta) {
+    const before = viewDate;
+    shiftViewDate(delta);
+    if (viewDate === before) return; // 첫날/마지막날 경계 - 변화 없음
+    playSwipeAnim(document.getElementById(elId), delta);
+  };
 }
-attachSwipeNav(document.getElementById('tab-itinerary'), swipeShiftDay);
+attachSwipeNav(document.getElementById('tab-itinerary'), swipeShiftDayFor('itinerary-day-view'));
+attachSwipeNav(document.getElementById('tab-expense'), swipeShiftDayFor('expense-list'));
 
 /* ============================== 일정 탭 ============================== */
 
@@ -670,13 +673,15 @@ function renderExpenseTab() {
     : '<div class="exp-empty">아래 버튼으로 비용을 추가해보세요</div>';
 
   const totalKrw = expenses.reduce((sum, e) => sum + (e.currency === 'KRW' ? e.amount : (e.krw || 0)), 0);
-  const missing = expenses.filter(e => e.currency !== 'KRW' && !e.krw).length;
-  document.getElementById('expense-summary').innerHTML = `
-    <div class="summary-card"><div class="label">이 날 항목</div><div class="value">${expenses.length}건</div></div>
-    <div class="summary-card"><div class="label">이 날 합계 (원화 환산)</div><div class="value">${fmtAmount(Math.round(totalKrw))}원</div></div>
-    <div class="summary-card"><div class="label">환율 미조회</div><div class="value">${missing}건</div></div>
-  `;
-  document.getElementById('expense-status').textContent = '';
+  const origSums = {};
+  expenses.forEach(e => {
+    if (e.currency === 'KRW') return;
+    origSums[e.currency] = (origSums[e.currency] || 0) + e.amount;
+  });
+  document.getElementById('expense-total-krw').textContent = fmtAmount(Math.round(totalKrw)) + '원';
+  document.getElementById('expense-total-orig').textContent = Object.keys(origSums)
+    .map(cur => `${fmtAmount(origSums[cur])} ${cur}`)
+    .join(' · ');
 
   expenses.filter(e => e.currency !== 'KRW' && !e.krw).forEach(e => refreshExpenseKrw(e.id));
 }
