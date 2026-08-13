@@ -1142,7 +1142,9 @@ async function analyzeImageWithGroqVision(dataUrl, apiKey, model) {
   }
   const json = await res.json();
   const text = (json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || '';
-  return parseJsonLoose(text);
+  const parsed = parseJsonLoose(text);
+  if (!parsed) throw new Error('AI 응답을 이해하지 못했습니다: ' + (text.trim().slice(0, 150) || '(빈 응답)'));
+  return parsed;
 }
 
 function parseJsonLoose(text) {
