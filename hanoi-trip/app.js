@@ -18,6 +18,9 @@ const ITIN_TO_EXPENSE_CATEGORY = {
   '이동': '교통', '식사': '식사', '관광': '관광/입장료',
   '숙소': '숙박', '쇼핑': '쇼핑', '기타': '기타',
 };
+const EXPENSE_CATEGORY_ICONS = {
+  '교통': '🚌', '식사': '🍴', '관광/입장료': '🎫', '숙박': '🏨', '쇼핑': '🛍️', '기타': '📦',
+};
 
 /* ---------------------------- 기본 시드 데이터 ---------------------------- */
 
@@ -226,7 +229,6 @@ function loadSettings() {
   return load(STORAGE_KEYS.settings, {
     startDate: '2026-08-15',
     endDate: '2026-08-23',
-    extraDates: [],
     groqApiKey: '',
     groqModel: 'llama-3.3-70b-versatile',
     googleClientId: '',
@@ -299,8 +301,7 @@ function formatDateLabel(dateStr) {
 
 function getTripDates() {
   const s = loadSettings();
-  const set = new Set([...dateRange(s.startDate, s.endDate), ...(s.extraDates || [])]);
-  return Array.from(set).sort();
+  return dateRange(s.startDate, s.endDate);
 }
 
 function fmtAmount(n) {
@@ -491,6 +492,13 @@ function toKoreaTime(hhmm) {
   if (kh >= 24) { kh -= 24; suffix = ' (다음날)'; }
   return `${String(kh).padStart(2, '0')}:${String(m).padStart(2, '0')}${suffix}`;
 }
+function formatTimeAmPm(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const period = h < 12 ? '오전' : '오후';
+  let h12 = h % 12;
+  if (h12 === 0) h12 = 12;
+  return `${period} ${h12}:${String(m).padStart(2, '0')}`;
+}
 function updateKoreaTimeDisplay() {
   const t = document.getElementById('entry-time').value;
   document.getElementById('entry-kr-time').textContent = t ? `🇰🇷 한국 시간 ${toKoreaTime(t)} · 베트남보다 2시간 빠름` : '';
@@ -592,17 +600,6 @@ function syncEntryCost(entry, amount, currency, placeText) {
   if (currency !== 'KRW') refreshExpenseKrw(exp.id);
 }
 
-document.getElementById('btn-add-day').addEventListener('click', () => {
-  const input = prompt('추가할 날짜를 YYYY-MM-DD 형식으로 입력하세요');
-  if (!input || !/^\d{4}-\d{2}-\d{2}$/.test(input)) { if (input) toast('날짜 형식이 올바르지 않습니다'); return; }
-  const s = loadSettings();
-  s.extraDates = s.extraDates || [];
-  if (!s.extraDates.includes(input)) s.extraDates.push(input);
-  saveSettings(s);
-  renderItineraryGrid();
-  toast(`${input} 날짜를 추가했습니다`);
-});
-
 /* ============================== 비용 탭 ============================== */
 
 function deleteExpense(expenseId) {
@@ -616,18 +613,21 @@ function deleteExpense(expenseId) {
 function renderExpenseTab() {
   renderDayNav('exp');
   const expenses = loadExpenses().filter(e => e.date === viewDate).sort((a, b) => a.time.localeCompare(b.time));
-  const tbody = document.getElementById('expense-tbody');
-  tbody.innerHTML = expenses.map(exp => `
-    <tr data-id="${exp.id}">
-      <td data-label="시간">${exp.time}</td>
-      <td data-label="장소/항목">${escapeHtml(exp.place || '')}</td>
-      <td data-label="분류"><span class="tag">${exp.category}</span></td>
-      <td data-label="금액">${fmtAmount(exp.amount)} ${exp.currency}</td>
-      <td data-label="원화 환산">${exp.krw ? fmtAmount(Math.round(exp.krw)) + '원' : (exp.currency === 'KRW' ? '' : '<span style="color:#bbb">조회중...</span>')}</td>
-      <td data-label="메모">${escapeHtml(exp.memo || '')}</td>
-      <td data-label="출처"><span class="tag">${sourceLabel(exp.source)}</span></td>
-      <td data-label=""><button class="btn small danger" data-del="${exp.id}">삭제</button></td>
-    </tr>`).join('');
+  const list = document.getElementById('expense-list');
+  list.innerHTML = expenses.length
+    ? expenses.map(exp => `
+      <div class="exp-row" data-id="${exp.id}">
+        <div class="exp-icon">${EXPENSE_CATEGORY_ICONS[exp.category] || '📦'}</div>
+        <div class="exp-main">
+          <div class="exp-title">${escapeHtml(exp.place || '')}</div>
+          <div class="exp-time">${formatTimeAmPm(exp.time)}${exp.memo ? ' · ' + escapeHtml(exp.memo) : ''}</div>
+        </div>
+        <div class="exp-amounts">
+          <div class="exp-krw">${exp.currency === 'KRW' ? fmtAmount(exp.amount) + '원' : (exp.krw ? fmtAmount(Math.round(exp.krw)) + '원' : '조회중')}</div>
+          ${exp.currency !== 'KRW' ? `<div class="exp-orig">${fmtAmount(exp.amount)} ${exp.currency}</div>` : ''}
+        </div>
+      </div>`).join('')
+    : '<div class="exp-empty">아래 버튼으로 비용을 추가해보세요</div>';
 
   const totalKrw = expenses.reduce((sum, e) => sum + (e.currency === 'KRW' ? e.amount : (e.krw || 0)), 0);
   const missing = expenses.filter(e => e.currency !== 'KRW' && !e.krw).length;
@@ -636,23 +636,13 @@ function renderExpenseTab() {
     <div class="summary-card"><div class="label">이 날 합계 (원화 환산)</div><div class="value">${fmtAmount(Math.round(totalKrw))}원</div></div>
     <div class="summary-card"><div class="label">환율 미조회</div><div class="value">${missing}건</div></div>
   `;
-  document.getElementById('expense-status').textContent = expenses.length ? '행을 클릭하면 수정할 수 있습니다' : '이 날 등록된 비용이 없습니다';
+  document.getElementById('expense-status').textContent = '';
 
   expenses.filter(e => e.currency !== 'KRW' && !e.krw).forEach(e => refreshExpenseKrw(e.id));
 }
 
-function sourceLabel(s) {
-  return s === 'photo' ? '사진분석' : s === 'itinerary' ? '일정연동' : '수기입력';
-}
-
-document.getElementById('expense-tbody').addEventListener('click', (e) => {
-  const delBtn = e.target.closest('[data-del]');
-  if (delBtn) {
-    e.stopPropagation();
-    if (confirm('이 비용 항목을 삭제할까요?')) { deleteExpense(delBtn.dataset.del); renderExpenseTab(); renderItineraryGrid(); }
-    return;
-  }
-  const row = e.target.closest('tr[data-id]');
+document.getElementById('expense-list').addEventListener('click', (e) => {
+  const row = e.target.closest('.exp-row');
   if (row) openExpenseModal(row.dataset.id);
 });
 
@@ -1059,18 +1049,22 @@ document.getElementById('expense-photo-input').addEventListener('change', async 
   if (!file) return;
   const result = await analyzePhoto(file, document.getElementById('expense-photo-status'));
 
-  if (result.date) document.getElementById('expense-date').value = result.date;
-  if (result.time) document.getElementById('expense-time').value = result.time;
+  document.getElementById('expense-date').value = result.date || viewDate || getTripDates()[0];
+  document.getElementById('expense-time').value = result.time || document.getElementById('expense-time').value || '12:00';
   const place = result.vendor || result.place || result.description;
   if (place) document.getElementById('expense-place').value = place;
-  if (result.category) {
-    const mapped = ITIN_TO_EXPENSE_CATEGORY[result.category] || result.category;
-    if (EXPENSE_CATEGORIES.includes(mapped)) document.getElementById('expense-category').value = mapped;
-  }
+  const mapped = result.category ? (ITIN_TO_EXPENSE_CATEGORY[result.category] || result.category) : null;
+  if (mapped && EXPENSE_CATEGORIES.includes(mapped)) document.getElementById('expense-category').value = mapped;
   if (result.amount) {
     document.getElementById('expense-amount').value = result.amount;
     document.getElementById('expense-currency').value = result.currency || 'VND';
+  } else {
+    toast('금액을 자동으로 인식하지 못했어요. 직접 입력해주세요', 4000);
   }
+  const memoParts = [];
+  if (result.place && result.place !== place) memoParts.push(result.place);
+  if (result.description && result.description !== place) memoParts.push(result.description);
+  if (memoParts.length) document.getElementById('expense-memo').value = memoParts.join(' · ');
 });
 
 /* ============================== 구글 시트 내보내기 ============================== */

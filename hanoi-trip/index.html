@@ -31,10 +31,6 @@
       <button id="itin-next-day" class="btn small day-nav-btn">다음날 ▶</button>
       <button id="itin-today-btn" class="btn small ghost">오늘</button>
     </div>
-    <div class="toolbar">
-      <button id="btn-add-day" class="btn ghost">+ 날짜 추가</button>
-      <button id="btn-export-sheet" class="btn ghost">📊 구글 시트로 내보내기</button>
-    </div>
     <div class="status-text" id="itinerary-status"></div>
     <div class="day-view-wrap">
       <div id="itinerary-day-view" class="day-view"></div>
@@ -55,17 +51,7 @@
       <span id="expense-status" class="status-text"></span>
     </div>
     <div id="expense-summary" class="summary-cards"></div>
-    <div class="grid-wrap">
-      <table id="expense-table">
-        <thead>
-          <tr>
-            <th>시간</th><th>장소/항목</th><th>분류</th>
-            <th>금액</th><th>원화 환산</th><th>메모</th><th>출처</th><th></th>
-          </tr>
-        </thead>
-        <tbody id="expense-tbody"></tbody>
-      </table>
-    </div>
+    <div id="expense-list" class="expense-list"></div>
   </section>
 
   <!-- ================= 참고사항 ================= -->
@@ -231,6 +217,9 @@
   <h4>구글 시트 연동 (OAuth 클라이언트 ID)</h4>
   <p class="help-text">Google Cloud Console에서 발급받은 <b>OAuth 2.0 클라이언트 ID(웹 애플리케이션)</b>를 입력하세요. 발급 방법은 채팅 안내를 참고하세요.</p>
   <input type="text" id="settings-google-client-id" placeholder="xxxxxxxx.apps.googleusercontent.com">
+  <div class="modal-actions" style="margin-top:-4px;margin-bottom:14px">
+    <button id="btn-export-sheet" class="btn small">📊 지금 구글 시트로 내보내기</button>
+  </div>
 
   <h4>다른 기기와 설정 공유</h4>
   <p class="help-text">API 키를 포함한 현재 설정을 코드로 만들어서, 다른 기기의 설정 화면에 붙여넣으면 그대로 복사됩니다. 이 코드 안에 API 키가 그대로 들어있으니 본인만 아는 안전한 곳(메모앱 등)에 보관하세요 — <b>깃허브에는 올라가지 않습니다.</b></p>
