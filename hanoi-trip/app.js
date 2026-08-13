@@ -653,12 +653,15 @@ function deleteExpense(expenseId) {
   saveItinerary(entries);
 }
 
+let expenseCumulativeView = false;
+
 function renderExpenseTab() {
   renderDayNav('exp');
-  const expenses = loadExpenses().filter(e => e.date === viewDate).sort((a, b) => a.time.localeCompare(b.time));
+  const allExpenses = loadExpenses();
+  const dayExpenses = allExpenses.filter(e => e.date === viewDate).sort((a, b) => a.time.localeCompare(b.time));
   const list = document.getElementById('expense-list');
-  list.innerHTML = expenses.length
-    ? expenses.map(exp => `
+  list.innerHTML = dayExpenses.length
+    ? dayExpenses.map(exp => `
       <div class="exp-row" data-id="${exp.id}">
         <div class="exp-icon">${EXPENSE_CATEGORY_ICONS[exp.category] || '📦'}</div>
         <div class="exp-main">
@@ -672,9 +675,15 @@ function renderExpenseTab() {
       </div>`).join('')
     : '<div class="exp-empty">아래 버튼으로 비용을 추가해보세요</div>';
 
-  const totalKrw = expenses.reduce((sum, e) => sum + (e.currency === 'KRW' ? e.amount : (e.krw || 0)), 0);
+  const dates = getTripDates();
+  const dayIdx = dates.indexOf(viewDate);
+  const totalExpenses = expenseCumulativeView
+    ? allExpenses.filter(e => dates.indexOf(e.date) !== -1 && dates.indexOf(e.date) <= dayIdx)
+    : dayExpenses;
+
+  const totalKrw = totalExpenses.reduce((sum, e) => sum + (e.currency === 'KRW' ? e.amount : (e.krw || 0)), 0);
   const origSums = {};
-  expenses.forEach(e => {
+  totalExpenses.forEach(e => {
     if (e.currency === 'KRW') return;
     origSums[e.currency] = (origSums[e.currency] || 0) + e.amount;
   });
@@ -682,9 +691,17 @@ function renderExpenseTab() {
   document.getElementById('expense-total-orig').textContent = Object.keys(origSums)
     .map(cur => `${fmtAmount(origSums[cur])} ${cur}`)
     .join(' · ');
+  document.getElementById('expense-total-label').textContent = expenseCumulativeView
+    ? `1~${dayIdx + 1}일차 누적 비용 (탭하여 이 날만 보기)`
+    : '이 날 비용 (탭하여 누적 비용 보기)';
 
-  expenses.filter(e => e.currency !== 'KRW' && !e.krw).forEach(e => refreshExpenseKrw(e.id));
+  allExpenses.filter(e => e.currency !== 'KRW' && !e.krw).forEach(e => refreshExpenseKrw(e.id));
 }
+
+document.getElementById('expense-total').addEventListener('click', () => {
+  expenseCumulativeView = !expenseCumulativeView;
+  renderExpenseTab();
+});
 
 document.getElementById('expense-list').addEventListener('click', (e) => {
   const row = e.target.closest('.exp-row');
