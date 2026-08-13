@@ -162,6 +162,16 @@ body{
 .region-tabs{display:flex;gap:6px;background:#fafafa;border:1px solid var(--line);border-radius:10px;padding:6px;margin-bottom:14px}
 .region-tab-btn{flex:1;background:transparent;border:none;padding:10px;border-radius:8px;font-size:14px;font-weight:bold;color:var(--muted);cursor:pointer;font-family:inherit}
 .region-tab-btn.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.map-open-card{
+  width:100%;display:flex;align-items:center;gap:12px;margin-bottom:14px;
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:12px 14px;cursor:pointer;font-family:inherit;text-align:left;
+}
+.map-open-card:disabled{opacity:.5;cursor:default}
+.map-open-icon{font-size:24px;flex:0 0 auto}
+.map-open-text{display:flex;flex-direction:column;gap:2px}
+.map-open-title{font-size:14.5px;font-weight:bold;color:var(--ink)}
+.map-open-sub{font-size:12px;color:var(--muted)}
 .ref-list{list-style:none;padding:0 0 84px;margin:0;display:flex;flex-direction:column;gap:8px;touch-action:pan-y}
 .ref-item{border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer}
 .ref-item:hover{background:#fafafa}

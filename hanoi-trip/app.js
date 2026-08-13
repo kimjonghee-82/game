@@ -837,12 +837,19 @@ function renderRegionTabs() {
 function renderReferenceTab() {
   renderRegionTabs();
   const ref = loadReference();
+  const items = ref[refRegion] || [];
   const list = document.getElementById('ref-list-active');
-  list.innerHTML = (ref[refRegion] || []).map(item => `
+  list.innerHTML = items.map(item => `
     <li class="ref-item" data-id="${item.id}">
       <div class="ref-item-title"><span class="tag">${item.type}</span>${escapeHtml(item.name)}</div>
       <div class="ref-item-desc">${escapeHtml(item.desc || '')}</div>
     </li>`).join('');
+
+  const count = items.filter(x => x.name).length;
+  document.getElementById('map-open-sub').textContent = count
+    ? `${regionLabel(refRegion)} 명소 ${count}곳 핀으로 보기`
+    : '등록된 명소가 없습니다';
+  document.getElementById('btn-open-region-map').disabled = count === 0;
 }
 
 document.getElementById('region-tabs').addEventListener('click', (e) => {
@@ -850,6 +857,12 @@ document.getElementById('region-tabs').addEventListener('click', (e) => {
   if (!btn) return;
   refRegion = btn.dataset.region;
   renderReferenceTab();
+});
+
+document.getElementById('btn-open-region-map').addEventListener('click', () => {
+  const url = buildRegionMapUrl(refRegion, null);
+  if (!url) { toast('등록된 명소가 없습니다'); return; }
+  window.open(url, '_blank');
 });
 
 function playSwipeAnim(el, delta) {
