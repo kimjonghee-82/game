@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
   reference: 'hanoi_trip_reference_v1',
   phrases: 'hanoi_trip_phrases_v1',
   fxCache: 'hanoi_trip_fx_cache_v1',
+  otherVideos: 'hanoi_trip_other_videos_v1',
 };
 
 const ITINERARY_CATEGORIES = ['이동', '식사', '관광', '숙소', '쇼핑', '기타'];
@@ -247,6 +248,8 @@ function loadPhrases() { return load(STORAGE_KEYS.phrases, null); }
 function savePhrases(v) { save(STORAGE_KEYS.phrases, v); }
 function loadFxCache() { return load(STORAGE_KEYS.fxCache, {}); }
 function saveFxCache(v) { save(STORAGE_KEYS.fxCache, v); }
+function loadVideos() { return load(STORAGE_KEYS.otherVideos, []); }
+function saveVideos(v) { save(STORAGE_KEYS.otherVideos, v); }
 
 function seedDefaultsIfEmpty() {
   if (!loadReference()) {
@@ -998,28 +1001,117 @@ document.getElementById('ref-photo-input').addEventListener('change', async (e) 
 
 /* ============================== 기본 대화 탭 ============================== */
 
-function renderPhrasesTab(filter) {
+let phraseIndex = 0;
+
+function renderPhrasesTab() {
   const cats = loadPhrases();
-  const q = (filter || '').trim().toLowerCase();
-  const wrap = document.getElementById('phrase-categories');
-  wrap.innerHTML = cats.map(cat => {
-    const phrases = cat.phrases.filter(p =>
-      !q || p.vi.toLowerCase().includes(q) || p.ko.toLowerCase().includes(q) || cat.situation.toLowerCase().includes(q));
-    if (q && phrases.length === 0) return '';
-    return `<div class="phrase-category">
-      <div class="phrase-category-head" data-cat="${cat.id}">${escapeHtml(cat.situation)} <span style="font-weight:normal;font-size:12px;color:#888">${phrases.length}개</span></div>
-      <ul class="phrase-list">${phrases.map(p => `<li><span class="p-vi">${escapeHtml(p.vi)}</span><span class="p-ko">${escapeHtml(p.ko)}</span><span class="p-pron">[${escapeHtml(p.pron)}]</span></li>`).join('')}</ul>
-    </div>`;
-  }).join('');
+  if (phraseIndex > cats.length - 1) phraseIndex = cats.length - 1;
+  if (phraseIndex < 0) phraseIndex = 0;
+  const cat = cats[phraseIndex];
+
+  document.getElementById('phrase-nav-label').textContent = cat ? `${cat.situation} · ${phraseIndex + 1}/${cats.length}` : '';
+  document.getElementById('phrase-prev-btn').disabled = phraseIndex <= 0;
+  document.getElementById('phrase-next-btn').disabled = phraseIndex >= cats.length - 1;
+
+  document.getElementById('phrase-category-view').innerHTML = cat
+    ? `<ul class="phrase-list">${cat.phrases.map(p => `<li><span class="p-vi">${escapeHtml(p.vi)}</span><span class="p-ko">${escapeHtml(p.ko)}</span><span class="p-pron">[${escapeHtml(p.pron)}]</span></li>`).join('')}</ul>`
+    : '';
 }
 
-document.getElementById('phrase-search').addEventListener('input', (e) => renderPhrasesTab(e.target.value));
+function shiftPhraseIndex(delta) {
+  const cats = loadPhrases();
+  const before = phraseIndex;
+  phraseIndex = Math.min(cats.length - 1, Math.max(0, phraseIndex + delta));
+  renderPhrasesTab();
+  if (phraseIndex === before) return;
+  playSwipeAnim(document.getElementById('phrase-category-view'), delta);
+}
 
-document.getElementById('phrase-categories').addEventListener('click', (e) => {
-  const head = e.target.closest('.phrase-category-head');
-  if (!head) return;
-  const list = head.nextElementSibling;
-  list.style.display = list.style.display === 'none' ? '' : 'none';
+document.getElementById('phrase-prev-btn').addEventListener('click', () => shiftPhraseIndex(-1));
+document.getElementById('phrase-next-btn').addEventListener('click', () => shiftPhraseIndex(1));
+attachSwipeNav(document.getElementById('tab-phrases'), shiftPhraseIndex);
+
+/* ============================== 기타(영상) 탭 ============================== */
+
+function parseVideoEmbed(url) {
+  const u = (url || '').trim();
+  if (!u) return null;
+  if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(u)) return { type: 'file', src: u };
+  const yt = /(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/.exec(u);
+  if (yt) return { type: 'youtube', id: yt[1] };
+  return null;
+}
+
+function renderOtherTab() {
+  const videos = loadVideos();
+  const list = document.getElementById('other-video-list');
+  list.innerHTML = videos.length
+    ? videos.map(v => {
+      const embed = parseVideoEmbed(v.url);
+      let embedHtml;
+      if (embed && embed.type === 'file') {
+        embedHtml = `<video src="${escapeHtml(embed.src)}" controls preload="metadata"></video>`;
+      } else if (embed && embed.type === 'youtube') {
+        embedHtml = `<iframe src="https://www.youtube-nocookie.com/embed/${embed.id}" title="${escapeHtml(v.title || '')}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+      } else {
+        embedHtml = `<div class="video-broken">유효한 영상 링크가 아닙니다</div>`;
+      }
+      return `<div class="video-card">
+        <div class="video-embed">${embedHtml}</div>
+        <div class="video-title-row" data-id="${v.id}">
+          <span class="video-title">${escapeHtml(v.title || '')}</span>
+          <button type="button" class="icon-btn video-edit-btn" data-id="${v.id}" title="수정">✏️</button>
+        </div>
+      </div>`;
+    }).join('')
+    : '<div class="exp-empty">아래 버튼으로 영상을 추가해보세요</div>';
+}
+
+document.getElementById('other-video-list').addEventListener('click', (e) => {
+  const btn = e.target.closest('.video-edit-btn');
+  if (btn) openVideoModal(btn.dataset.id);
+});
+document.getElementById('btn-add-video').addEventListener('click', () => openVideoModal(null));
+
+function openVideoModal(videoId) {
+  const isNew = !videoId;
+  document.getElementById('video-modal-title').textContent = isNew ? '영상 추가' : '영상 수정';
+  document.getElementById('video-id').value = videoId || '';
+  document.getElementById('video-delete-btn').classList.toggle('hidden', isNew);
+
+  let v = { title: '', url: '' };
+  if (!isNew) v = loadVideos().find(x => x.id === videoId) || v;
+
+  document.getElementById('video-title').value = v.title || '';
+  document.getElementById('video-url').value = v.url || '';
+  openModal('modal-video');
+}
+
+document.getElementById('video-cancel-btn').addEventListener('click', () => closeModal('modal-video'));
+
+document.getElementById('video-save-btn').addEventListener('click', () => {
+  const id = document.getElementById('video-id').value;
+  const title = document.getElementById('video-title').value.trim();
+  const url = document.getElementById('video-url').value.trim();
+  if (!url) { toast('영상 링크를 입력해주세요'); return; }
+  if (!parseVideoEmbed(url)) { toast('유튜브 링크 또는 mp4/webm 파일 링크를 입력해주세요'); return; }
+
+  const videos = loadVideos();
+  let v = videos.find(x => x.id === id);
+  if (!v) { v = { id: uid() }; videos.push(v); }
+  Object.assign(v, { title, url });
+  saveVideos(videos);
+  renderOtherTab();
+  closeModal('modal-video');
+  toast('영상을 저장했습니다');
+});
+
+document.getElementById('video-delete-btn').addEventListener('click', () => {
+  const id = document.getElementById('video-id').value;
+  saveVideos(loadVideos().filter(x => x.id !== id));
+  renderOtherTab();
+  closeModal('modal-video');
+  toast('영상을 삭제했습니다');
 });
 
 /* ============================== 사진 분석 (OCR + Groq) ============================== */
@@ -1432,3 +1524,4 @@ renderItineraryGrid();
 renderExpenseTab();
 renderReferenceTab();
 renderPhrasesTab();
+renderOtherTab();

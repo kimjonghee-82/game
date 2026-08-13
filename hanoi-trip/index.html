@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>하노이 · 사파 여행 플래너</title>
-<link rel="stylesheet" href="style.css?v=17">
+<link rel="stylesheet" href="style.css?v=18">
 </head>
 <body>
 
@@ -18,6 +18,7 @@
     <button class="tab-btn" data-tab="expense">비용</button>
     <button class="tab-btn" data-tab="reference">참고사항</button>
     <button class="tab-btn" data-tab="phrases">대화</button>
+    <button class="tab-btn" data-tab="other">기타</button>
   </nav>
 </header>
 
@@ -62,10 +63,19 @@
 
   <!-- ================= 대화 ================= -->
   <section id="tab-phrases" class="tab-panel">
-    <div class="toolbar">
-      <input id="phrase-search" type="text" placeholder="상황이나 문장 검색...">
+    <div class="day-nav">
+      <button id="phrase-prev-btn" class="btn small day-nav-btn">◀ 이전</button>
+      <div class="day-nav-label" id="phrase-nav-label"></div>
+      <button id="phrase-next-btn" class="btn small day-nav-btn">다음 ▶</button>
     </div>
-    <div id="phrase-categories"></div>
+    <div id="phrase-category-view" class="day-view"></div>
+  </section>
+
+  <!-- ================= 기타 ================= -->
+  <section id="tab-other" class="tab-panel">
+    <p class="help-text" style="padding:0 2px 10px">유튜브 링크는 채널이 설정한 광고가 그대로 노출될 수 있습니다(임베드로는 광고를 없앨 수 없어요). 광고 없이 재생하려면 mp4/webm 같은 영상 파일 링크를 입력하세요 — 그러면 자동으로 광고 없는 영상 플레이어로 표시됩니다.</p>
+    <div id="other-video-list" class="other-video-list"></div>
+    <button id="btn-add-video" class="fab-btn fab-center" title="영상 추가">+</button>
   </section>
 
 </main>
@@ -200,6 +210,25 @@
   </div>
 </div>
 
+<!-- 기타(영상) 편집 -->
+<div id="modal-video" class="modal hidden">
+  <div class="modal-title-row">
+    <h3 id="video-modal-title">영상 추가</h3>
+  </div>
+  <input type="hidden" id="video-id">
+  <label>제목 <input type="text" id="video-title" placeholder="예: 하노이 여행 브이로그"></label>
+  <label>영상 링크
+    <input type="text" id="video-url" placeholder="유튜브 링크 또는 mp4/webm 파일 링크">
+  </label>
+  <p class="help-text" style="margin-top:-6px">유튜브 링크는 광고가 그대로 노출될 수 있어요. mp4/webm 파일 링크를 넣으면 광고 없이 재생됩니다.</p>
+  <div class="modal-actions">
+    <button id="video-delete-btn" class="btn danger">삭제</button>
+    <div class="spacer"></div>
+    <button id="video-cancel-btn" class="btn ghost">취소</button>
+    <button id="video-save-btn" class="btn primary">저장</button>
+  </div>
+</div>
+
 <!-- 설정 -->
 <div id="modal-settings" class="modal hidden">
   <h3>설정</h3>
@@ -247,6 +276,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="app.js?v=17"></script>
+<script src="app.js?v=18"></script>
 </body>
 </html>
