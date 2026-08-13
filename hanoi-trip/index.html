@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>하노이 · 사파 여행 플래너</title>
-<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 
@@ -32,10 +32,8 @@
       <button id="itin-today-btn" class="btn small ghost">오늘</button>
     </div>
     <div class="status-text" id="itinerary-status"></div>
-    <div class="day-view-wrap">
-      <div id="itinerary-day-view" class="day-view"></div>
-      <button id="btn-add-entry" class="fab" title="일정 추가">+</button>
-    </div>
+    <div id="itinerary-day-view" class="day-view"></div>
+    <button id="btn-add-entry" class="fab-btn fab-center" title="일정 추가">+</button>
   </section>
 
   <!-- ================= 비용 ================= -->
@@ -77,14 +75,13 @@
 
 <!-- 일정 항목 편집 -->
 <div id="modal-entry" class="modal hidden">
-  <h3 id="entry-modal-title">일정 추가</h3>
-  <input type="hidden" id="entry-id">
-
-  <div class="photo-fill-box">
-    <button id="entry-photo-btn" class="btn small">📷 사진으로 채우기</button>
-    <span id="entry-photo-status" class="status-text"></span>
+  <div class="modal-title-row">
+    <h3 id="entry-modal-title">일정 추가</h3>
+    <button id="entry-photo-btn" type="button" class="icon-btn" title="사진으로 채우기">📷</button>
   </div>
+  <span id="entry-photo-status" class="status-text"></span>
   <input type="file" id="entry-photo-input" accept="image/*" class="hidden">
+  <input type="hidden" id="entry-id">
 
   <label>날짜 <select id="entry-date"></select></label>
   <label><span id="entry-time-label-text">현지 시간</span> <input type="time" id="entry-time"></label>
@@ -128,14 +125,13 @@
 
 <!-- 비용 편집 -->
 <div id="modal-expense" class="modal hidden">
-  <h3 id="expense-modal-title">비용 추가</h3>
-  <input type="hidden" id="expense-id">
-
-  <div class="photo-fill-box">
-    <button id="expense-photo-btn" class="btn small">📷 영수증으로 채우기</button>
-    <span id="expense-photo-status" class="status-text"></span>
+  <div class="modal-title-row">
+    <h3 id="expense-modal-title">비용 추가</h3>
+    <button id="expense-photo-btn" type="button" class="icon-btn" title="영수증으로 채우기">📷</button>
   </div>
+  <span id="expense-photo-status" class="status-text"></span>
   <input type="file" id="expense-photo-input" accept="image/*" class="hidden">
+  <input type="hidden" id="expense-id">
 
   <label>날짜 <input type="date" id="expense-date"></label>
   <label>시간 <input type="time" id="expense-time"></label>
@@ -251,6 +247,6 @@
 <script src="https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="app.js?v=10"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>

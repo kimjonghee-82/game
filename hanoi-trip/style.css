@@ -91,10 +91,9 @@ body{
 .day-nav #itin-today-btn, .day-nav #exp-today-btn{color:var(--ink);border-color:var(--line)}
 
 /* ===== 일정: 타임라인 ===== */
-.day-view-wrap{position:relative}
 .day-view{
   background:var(--panel);border:1px solid var(--line);border-radius:14px;
-  padding:16px 14px 20px;min-height:120px;
+  padding:16px 14px 84px;min-height:120px;touch-action:pan-y;
 }
 .tl-empty{color:var(--muted);font-size:13.5px;text-align:center;padding:24px 10px}
 
@@ -132,10 +131,6 @@ body{
   border:none;cursor:pointer;box-shadow:0 6px 16px rgba(192,57,43,.4);
 }
 .fab-btn:active{background:var(--accent-dark)}
-.fab{
-  position:sticky;bottom:16px;margin-left:auto;
-  float:right;margin-top:-78px;margin-right:6px;
-}
 .fab-center{
   position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:60;
 }
@@ -170,11 +165,6 @@ body{
 .region-tab-btn{flex:1;background:transparent;border:none;padding:10px;border-radius:8px;font-size:14px;font-weight:bold;color:var(--muted);cursor:pointer;font-family:inherit}
 .region-tab-btn.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .ref-list{list-style:none;padding:0 0 84px;margin:0;display:flex;flex-direction:column;gap:8px;touch-action:pan-y}
-.ref-list.swipe-anim{animation:refSwipeIn .22s ease-out}
-@keyframes refSwipeIn{
-  from{opacity:0;transform:translateX(var(--swipe-dir,24px))}
-  to{opacity:1;transform:translateX(0)}
-}
 .ref-item{border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer}
 .ref-item:hover{background:#fafafa}
 .ref-item .ref-item-title{font-weight:bold;font-size:14px;color:var(--ink)}
@@ -225,9 +215,11 @@ body{
 .help-text{font-size:12px;color:var(--muted);line-height:1.5}
 .hidden{display:none!important}
 
-.photo-fill-box{
-  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-  background:#fafafa;border:1px solid var(--line);border-radius:8px;padding:9px 10px;margin-bottom:14px;
+.modal .status-text{display:block;margin-bottom:12px}
+.swipe-anim{animation:swipeSlideIn .22s ease-out}
+@keyframes swipeSlideIn{
+  from{opacity:0;transform:translateX(var(--swipe-dir,24px))}
+  to{opacity:1;transform:translateX(0)}
 }
 .kr-time-text{font-size:12px;color:var(--muted);margin:-6px 0 12px}
 .map-row{display:flex;gap:8px;margin-bottom:12px}

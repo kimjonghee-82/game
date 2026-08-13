@@ -390,6 +390,15 @@ document.getElementById('exp-prev-day').addEventListener('click', () => shiftVie
 document.getElementById('exp-next-day').addEventListener('click', () => shiftViewDate(1));
 document.getElementById('exp-today-btn').addEventListener('click', goToToday);
 
+/** 일정 화면을 좌우로 스와이프해서 하루씩 이동 */
+function swipeShiftDay(delta) {
+  const before = viewDate;
+  shiftViewDate(delta);
+  if (viewDate === before) return; // 첫날/마지막날 경계 - 변화 없음
+  playSwipeAnim(document.getElementById('itinerary-day-view'), delta);
+}
+attachSwipeNav(document.getElementById('tab-itinerary'), swipeShiftDay);
+
 /* ============================== 일정 탭 ============================== */
 
 function fillDateSelect(selectEl, selectedDate) {
@@ -818,6 +827,13 @@ document.getElementById('region-tabs').addEventListener('click', (e) => {
   renderReferenceTab();
 });
 
+function playSwipeAnim(el, delta) {
+  el.style.setProperty('--swipe-dir', delta > 0 ? '24px' : '-24px');
+  el.classList.remove('swipe-anim');
+  void el.offsetWidth; // 애니메이션 재시작을 위한 강제 리플로우
+  el.classList.add('swipe-anim');
+}
+
 /** 하노이/사파(및 추가된 지역) 사이를 화면 스와이프로 이동 */
 function goToAdjacentRegion(delta) {
   const keys = getRegionKeys();
@@ -826,31 +842,29 @@ function goToAdjacentRegion(delta) {
   if (nextIdx < 0 || nextIdx >= keys.length) return;
   refRegion = keys[nextIdx];
   renderReferenceTab();
-  const list = document.getElementById('ref-list-active');
-  list.style.setProperty('--swipe-dir', delta > 0 ? '24px' : '-24px');
-  list.classList.remove('swipe-anim');
-  void list.offsetWidth; // 애니메이션 재시작을 위한 강제 리플로우
-  list.classList.add('swipe-anim');
+  playSwipeAnim(document.getElementById('ref-list-active'), delta);
 }
 
-(() => {
+/** 화면을 좌우로 미는 동작을 감지해서 콜백(delta: -1|1)을 실행 */
+function attachSwipeNav(sectionEl, onSwipe) {
   let startX = 0, startY = 0, tracking = false;
-  const section = document.getElementById('tab-reference');
-  section.addEventListener('touchstart', (e) => {
+  sectionEl.addEventListener('touchstart', (e) => {
     const t = e.touches[0];
     startX = t.clientX; startY = t.clientY; tracking = true;
   }, { passive: true });
-  section.addEventListener('touchend', (e) => {
+  sectionEl.addEventListener('touchend', (e) => {
     if (!tracking) return;
     tracking = false;
     const t = e.changedTouches[0];
     const dx = t.clientX - startX;
     const dy = t.clientY - startY;
     if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-      goToAdjacentRegion(dx < 0 ? 1 : -1);
+      onSwipe(dx < 0 ? 1 : -1);
     }
   }, { passive: true });
-})();
+}
+
+attachSwipeNav(document.getElementById('tab-reference'), goToAdjacentRegion);
 
 document.getElementById('ref-list-active').addEventListener('click', (e) => {
   const li = e.target.closest('.ref-item');
