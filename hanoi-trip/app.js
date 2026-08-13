@@ -190,7 +190,8 @@ function loadSettings() {
     startDate: '2026-08-15',
     endDate: '2026-08-23',
     extraDates: [],
-    anthropicApiKey: '',
+    grokApiKey: '',
+    grokModel: 'grok-4',
     googleClientId: '',
     googleSpreadsheetId: '',
   });
@@ -823,25 +824,21 @@ const VISION_PROMPT = `이 이미지는 베트남(하노이/사파) 여행 중 �
   "description": "사진 내용에 대한 한 문장 요약 (한국어)"
 }`;
 
-async function analyzeImageWithClaude(dataUrl, apiKey) {
-  const mediaType = dataUrl.substring(5, dataUrl.indexOf(';'));
-  const base64 = dataUrl.split(',')[1];
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+async function analyzeImageWithGrok(dataUrl, apiKey, model) {
+  const res = await fetch('https://api.x.ai/v1/chat/completions', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
+      'Authorization': 'Bearer ' + apiKey,
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-5',
+      model: model || 'grok-4',
       max_tokens: 500,
       messages: [{
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
           { type: 'text', text: VISION_PROMPT },
+          { type: 'image_url', image_url: { url: dataUrl } },
         ],
       }],
     }),
@@ -851,7 +848,7 @@ async function analyzeImageWithClaude(dataUrl, apiKey) {
     throw new Error(`API 오류(${res.status}): ${t.slice(0, 150)}`);
   }
   const json = await res.json();
-  const text = (json.content && json.content[0] && json.content[0].text) || '';
+  const text = (json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || '';
   return parseJsonLoose(text);
 }
 
@@ -884,10 +881,10 @@ async function startPhotoAnalysis(file) {
   }
 
   let vision = null;
-  if (settings.anthropicApiKey) {
+  if (settings.grokApiKey) {
     document.getElementById('photo-analyze-status').textContent = 'AI가 사진 내용을 분석하는 중...';
     try {
-      vision = await analyzeImageWithClaude(resized, settings.anthropicApiKey);
+      vision = await analyzeImageWithGrok(resized, settings.grokApiKey, settings.grokModel);
     } catch (e) {
       toast('AI 사진 분석 실패: ' + e.message, 5000);
     }
@@ -1066,7 +1063,8 @@ function openSettingsModal() {
   const s = loadSettings();
   document.getElementById('settings-start-date').value = s.startDate;
   document.getElementById('settings-end-date').value = s.endDate;
-  document.getElementById('settings-anthropic-key').value = s.anthropicApiKey || '';
+  document.getElementById('settings-grok-key').value = s.grokApiKey || '';
+  document.getElementById('settings-grok-model').value = s.grokModel || 'grok-4';
   document.getElementById('settings-google-client-id').value = s.googleClientId || '';
   openModal('modal-settings');
 }
@@ -1077,7 +1075,8 @@ document.getElementById('settings-save-btn').addEventListener('click', () => {
   const s = loadSettings();
   s.startDate = document.getElementById('settings-start-date').value || s.startDate;
   s.endDate = document.getElementById('settings-end-date').value || s.endDate;
-  s.anthropicApiKey = document.getElementById('settings-anthropic-key').value.trim();
+  s.grokApiKey = document.getElementById('settings-grok-key').value.trim();
+  s.grokModel = document.getElementById('settings-grok-model').value.trim() || 'grok-4';
   s.googleClientId = document.getElementById('settings-google-client-id').value.trim();
   saveSettings(s);
   renderItineraryGrid();
