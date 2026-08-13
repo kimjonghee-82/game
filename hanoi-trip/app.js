@@ -841,15 +841,12 @@ function renderReferenceTab() {
   const list = document.getElementById('ref-list-active');
   list.innerHTML = items.map(item => `
     <li class="ref-item" data-id="${item.id}">
-      <div class="ref-item-title"><span class="tag">${item.type}</span>${escapeHtml(item.name)}</div>
+      <div class="ref-item-row">
+        <div class="ref-item-title"><span class="tag">${item.type}</span>${escapeHtml(item.name)}</div>
+        <button type="button" class="icon-btn ref-item-map-btn" data-id="${item.id}" title="지도에서 보기">🗺️</button>
+      </div>
       <div class="ref-item-desc">${escapeHtml(item.desc || '')}</div>
     </li>`).join('');
-
-  const count = items.filter(x => x.name).length;
-  document.getElementById('map-open-sub').textContent = count
-    ? `${regionLabel(refRegion)} 명소 ${count}곳 핀으로 보기`
-    : '등록된 명소가 없습니다';
-  document.getElementById('btn-open-region-map').disabled = count === 0;
 }
 
 document.getElementById('region-tabs').addEventListener('click', (e) => {
@@ -857,12 +854,6 @@ document.getElementById('region-tabs').addEventListener('click', (e) => {
   if (!btn) return;
   refRegion = btn.dataset.region;
   renderReferenceTab();
-});
-
-document.getElementById('btn-open-region-map').addEventListener('click', () => {
-  const url = buildRegionMapUrl(refRegion, null);
-  if (!url) { toast('등록된 명소가 없습니다'); return; }
-  window.open(url, '_blank');
 });
 
 function playSwipeAnim(el, delta) {
@@ -905,6 +896,16 @@ function attachSwipeNav(sectionEl, onSwipe) {
 attachSwipeNav(document.getElementById('tab-reference'), goToAdjacentRegion);
 
 document.getElementById('ref-list-active').addEventListener('click', (e) => {
+  const mapBtn = e.target.closest('.ref-item-map-btn');
+  if (mapBtn) {
+    e.stopPropagation();
+    const ref = loadReference();
+    const item = (ref[refRegion] || []).find(x => x.id === mapBtn.dataset.id);
+    const url = (item && item.mapUrl) || buildMapUrl(item && item.name);
+    if (!url) { toast('이름을 먼저 입력해주세요'); return; }
+    window.open(url, '_blank');
+    return;
+  }
   const li = e.target.closest('.ref-item');
   if (li) openRefModal(refRegion, li.dataset.id);
 });
@@ -935,19 +936,10 @@ function openRefModal(region, itemId) {
 
 document.getElementById('ref-cancel-btn').addEventListener('click', () => closeModal('modal-ref'));
 
-/** 이 장소를 포함해 같은 탭(지역)의 모든 항목을 핀으로 함께 보여주는 구글 지도 경로 URL */
-function buildRegionMapUrl(region, currentName) {
-  const ref = loadReference();
-  const names = (ref[region] || []).map(x => x.name).filter(Boolean);
-  if (currentName && !names.includes(currentName)) names.push(currentName);
-  return names.length ? `https://www.google.com/maps/dir/${names.map(n => encodeURIComponent(n)).join('/')}` : '';
-}
-
 document.getElementById('ref-map-open-btn').addEventListener('click', () => {
   const name = document.getElementById('ref-name').value.trim();
-  const region = regionKeyForLabel(document.getElementById('ref-region-input').value.trim()) || refRegion;
   const manual = document.getElementById('ref-map-url').value.trim();
-  const url = buildRegionMapUrl(region, name) || manual || buildMapUrl(name);
+  const url = manual || buildMapUrl(name);
   if (!url) { toast('이름을 먼저 입력해주세요'); return; }
   window.open(url, '_blank');
 });
