@@ -135,7 +135,7 @@ body{
   position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:60;
 }
 .fab-translate{
-  position:fixed;right:18px;bottom:26px;left:auto;z-index:60;
+  position:fixed;left:calc(50% + 75px);bottom:26px;z-index:60;
   width:52px;height:52px;color:#fff;
   background:#2b2b2b;box-shadow:0 6px 16px rgba(0,0,0,.35);
 }
@@ -224,7 +224,6 @@ body{
 .translate-history-item .th-thumb{width:40px;height:40px;border-radius:6px;object-fit:cover;flex:0 0 auto;background:#eee}
 .translate-history-item .th-text{flex:1;min-width:0}
 .translate-history-item .th-translated{font-size:13px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.translate-history-item .th-original{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 
 /* ===== 모달 ===== */
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100}

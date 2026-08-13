@@ -1162,6 +1162,94 @@ function resizeImageToDataUrl(file, maxDim, quality) {
   });
 }
 
+function loadImageElement(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+function wrapCanvasText(ctx, text, maxWidth) {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = w;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : [String(text || '')];
+}
+
+/**
+ * 사진 위에 AI가 찾은 글자 영역(box)마다 배경색을 덮고 그 자리에 한국어 번역을 그려 넣습니다.
+ * 무료 비전 모델은 정확한 좌표를 못 찾을 수 있어 100% 정밀하지는 않은 베스트 에포트 방식입니다.
+ */
+async function renderTranslatedOverlayImage(baseDataUrl, regions) {
+  const img = await loadImageElement(baseDataUrl);
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+
+  let drawn = 0;
+  (regions || []).forEach(r => {
+    if (!r || !r.box || !r.translated_text) return;
+    const { x, y, w, h } = r.box;
+    if ([x, y, w, h].some(v => typeof v !== 'number' || isNaN(v))) return;
+    const px = Math.max(0, Math.min(canvas.width - 1, Math.round(x / 100 * canvas.width)));
+    const py = Math.max(0, Math.min(canvas.height - 1, Math.round(y / 100 * canvas.height)));
+    const pw = Math.max(6, Math.min(canvas.width - px, Math.round(w / 100 * canvas.width)));
+    const ph = Math.max(6, Math.min(canvas.height - py, Math.round(h / 100 * canvas.height)));
+
+    // 원문 글자를 덮기 위해 그 영역의 평균 색상을 배경으로 사용 (진짜 인페인팅은 아니지만 최대한 자연스럽게)
+    let avg = [255, 255, 255];
+    try {
+      const data = ctx.getImageData(px, py, pw, ph).data;
+      let rs = 0, gs = 0, bs = 0, n = 0;
+      for (let i = 0; i < data.length; i += 16) { rs += data[i]; gs += data[i + 1]; bs += data[i + 2]; n++; }
+      if (n > 0) avg = [Math.round(rs / n), Math.round(gs / n), Math.round(bs / n)];
+    } catch (e) { /* 캔버스 보안 제약 등으로 실패하면 흰 배경으로 대체 */ }
+
+    ctx.fillStyle = `rgb(${avg[0]},${avg[1]},${avg[2]})`;
+    ctx.fillRect(px, py, pw, ph);
+
+    const luminance = 0.299 * avg[0] + 0.587 * avg[1] + 0.114 * avg[2];
+    ctx.fillStyle = luminance > 150 ? '#111111' : '#ffffff';
+    ctx.textBaseline = 'top';
+
+    let fontSize = Math.max(9, Math.min(30, Math.floor(ph * 0.7)));
+    let lines = [String(r.translated_text)];
+    while (fontSize > 8) {
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      lines = wrapCanvasText(ctx, r.translated_text, pw - 6);
+      if (lines.length * fontSize * 1.15 <= ph || fontSize <= 9) break;
+      fontSize -= 1;
+    }
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    const lineHeight = fontSize * 1.15;
+    const totalHeight = lines.length * lineHeight;
+    let ty = py + Math.max(0, (ph - totalHeight) / 2);
+    lines.forEach(line => {
+      const tw = ctx.measureText(line).width;
+      const tx = px + Math.max(2, (pw - tw) / 2);
+      ctx.fillText(line, tx, ty);
+      ty += lineHeight;
+    });
+    drawn++;
+  });
+
+  return { dataUrl: canvas.toDataURL('image/jpeg', 0.85), drawn };
+}
+
 function readExifInfo(file) {
   return new Promise((resolve) => {
     try {
@@ -1388,10 +1476,16 @@ function buildTranslatePrompt(sourceLang) {
 아래 JSON 형식으로만 답변하세요 (다른 설명 없이 JSON만):
 {
   "detected_language": "인식된 언어 이름(한국어로, 예: 베트남어/영어/중국어) 또는 null",
-  "original_text": "사진에서 읽은 원문 그대로",
-  "translated_text": "문맥에 맞게 자연스럽게 의역한 한국어 번역"
+  "translated_text": "사진 전체 내용을 문맥에 맞게 자연스럽게 의역한 한국어 번역 (전체를 요약하지 말고 사진에 있는 모든 문장을 빠짐없이 번역)",
+  "regions": [
+    {
+      "translated_text": "이 영역 글자의 한국어 번역",
+      "box": { "x": 0, "y": 0, "w": 0, "h": 0 }
+    }
+  ]
 }
-사진에서 글자를 전혀 찾을 수 없으면 original_text와 translated_text를 빈 문자열로 답하세요.
+regions는 사진에서 구분되는 글자 덩어리(문장, 줄, 간판 문구, 메뉴 항목 등)마다 하나씩 만드세요. box의 x,y는 그 글자 덩어리의 왼쪽 위 모서리 위치를 사진 전체 가로/세로 대비 백분율(0~100)로, w,h는 그 글자 덩어리의 가로/세로 크기를 같은 방식의 백분율로 최대한 정확하게 추정하세요 (예: 사진 왼쪽 위 구석의 작은 글자는 x,y가 0에 가깝고 w,h는 작은 숫자).
+사진에서 글자를 전혀 찾을 수 없으면 translated_text를 빈 문자열로, regions를 빈 배열로 답하세요.
 추론 과정이나 설명을 출력하지 마세요. <think> 태그를 쓰지 말고, 다른 텍스트 없이 오직 위 JSON 객체 하나만 바로 출력하세요.`;
 }
 
@@ -1432,9 +1526,24 @@ document.getElementById('translate-photo-input').addEventListener('change', asyn
     const model = resolveGroqVisionModel(settings.groqVisionModel);
     const prompt = buildTranslatePrompt(settings.translateSourceLang);
     const result = await analyzeImageWithGroqVision(resized, settings.groqApiKey, model, prompt);
-    document.getElementById('translate-original').value = result.original_text || '';
     document.getElementById('translate-translated').value = result.translated_text || '';
-    setStatus(result.translated_text ? '번역 완료 — 확인하고 저장하세요' : '사진에서 글자를 찾지 못했습니다');
+
+    if (Array.isArray(result.regions) && result.regions.length) {
+      try {
+        const { dataUrl, drawn } = await renderTranslatedOverlayImage(resized, result.regions);
+        if (drawn) {
+          document.getElementById('translate-thumb').src = dataUrl;
+          pendingTranslatePhoto = { thumb: dataUrl };
+          setStatus('번역 완료 — 사진 위에 한국어로 표시했어요. 확인 후 저장하세요');
+        } else {
+          setStatus(result.translated_text ? '번역 완료 — 확인하고 저장하세요' : '사진에서 글자를 찾지 못했습니다');
+        }
+      } catch (overlayErr) {
+        setStatus(result.translated_text ? '번역 완료 — 확인하고 저장하세요' : '사진에서 글자를 찾지 못했습니다');
+      }
+    } else {
+      setStatus(result.translated_text ? '번역 완료 — 확인하고 저장하세요' : '사진에서 글자를 찾지 못했습니다');
+    }
   } catch (err) {
     setStatus('번역 실패: ' + err.message);
     toast('번역 실패: ' + err.message, 5000);
@@ -1452,7 +1561,6 @@ function renderTranslateHistory() {
       ${t.thumb ? `<img class="th-thumb" src="${t.thumb}" alt="">` : ''}
       <div class="th-text">
         <div class="th-translated">${escapeHtml(t.translated || '')}</div>
-        <div class="th-original">${escapeHtml(t.original || '')}</div>
       </div>
     </li>`).join('');
 }
@@ -1472,13 +1580,11 @@ function openTranslateModal(translateId) {
 
   if (translateId) {
     const t = loadTranslations().find(x => x.id === translateId);
-    document.getElementById('translate-original').value = (t && t.original) || '';
     document.getElementById('translate-translated').value = (t && t.translated) || '';
     document.getElementById('translate-thumb-wrap').classList.toggle('hidden', !(t && t.thumb));
     if (t && t.thumb) document.getElementById('translate-thumb').src = t.thumb;
     pendingTranslatePhoto = t ? { thumb: t.thumb } : null;
   } else {
-    document.getElementById('translate-original').value = '';
     document.getElementById('translate-translated').value = '';
     document.getElementById('translate-thumb-wrap').classList.add('hidden');
     pendingTranslatePhoto = null;
@@ -1492,14 +1598,13 @@ document.getElementById('translate-cancel-btn').addEventListener('click', () => 
 
 document.getElementById('translate-save-btn').addEventListener('click', () => {
   const id = document.getElementById('translate-id').value;
-  const original = document.getElementById('translate-original').value.trim();
   const translated = document.getElementById('translate-translated').value.trim();
   if (!translated) { toast('번역 내용을 입력해주세요'); return; }
 
   const list = loadTranslations();
   let t = list.find(x => x.id === id);
   if (!t) { t = { id: uid(), date: todayStr() }; list.push(t); }
-  Object.assign(t, { original, translated, thumb: (pendingTranslatePhoto && pendingTranslatePhoto.thumb) || t.thumb || '' });
+  Object.assign(t, { translated, thumb: (pendingTranslatePhoto && pendingTranslatePhoto.thumb) || t.thumb || '' });
   saveTranslations(list);
   document.getElementById('translate-id').value = t.id;
   document.getElementById('translate-delete-btn').classList.remove('hidden');

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>하노이 · 사파 여행 플래너</title>
-<link rel="stylesheet" href="style.css?v=23">
+<link rel="stylesheet" href="style.css?v=24">
 </head>
 <body>
 
@@ -81,10 +81,11 @@
 </main>
 
 <!-- 화면 위에 항상 떠 있는 카메라 번역 버튼 (모든 탭에서 표시) -->
-<button id="btn-translate-camera" class="fab-btn fab-translate" title="카메라로 번역">
+<button id="btn-translate-camera" class="fab-btn fab-translate" title="렌즈로 번역">
   <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/>
-    <circle cx="12" cy="13.2" r="3.6"/>
+    <circle cx="12" cy="12" r="8"/>
+    <circle cx="12" cy="12" r="3.2"/>
+    <circle cx="9" cy="9" r="1" fill="currentColor" stroke="none"/>
   </svg>
 </button>
 <input type="file" id="translate-photo-input" accept="image/*" capture="environment" class="hidden">
@@ -251,8 +252,7 @@
     <img id="translate-thumb" alt="">
     <div id="translate-scan-line" class="translate-scan-line hidden"></div>
   </div>
-  <label class="translate-main-label">번역(한국어) <textarea id="translate-translated" rows="3" class="translate-main-text" placeholder="번역 결과가 여기에 표시됩니다"></textarea></label>
-  <label>원문 <textarea id="translate-original" rows="2" placeholder="사진을 찍으면 인식된 원문이 여기에 표시됩니다"></textarea></label>
+  <label class="translate-main-label">번역(한국어) <textarea id="translate-translated" rows="4" class="translate-main-text" placeholder="사진을 찍으면 번역 결과가 여기에 표시됩니다"></textarea></label>
 
   <div class="modal-actions">
     <button id="translate-delete-btn" class="btn danger hidden">삭제</button>
@@ -318,6 +318,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="app.js?v=23"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
