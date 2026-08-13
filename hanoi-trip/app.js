@@ -1097,7 +1097,8 @@ const RECEIPT_ANALYSIS_PROMPT = `당신은 베트남(하노이/사파) 여행 �
   "category": "이동" "식사" "관광" "숙소" "쇼핑" "기타" 중 하나,
   "website": "사진 속에 보이는 웹사이트/홈페이지 주소가 있다면 그 값, 없으면 null",
   "description": "내용에 대한 한 문장 요약 (한국어)"
-}`;
+}
+추론 과정이나 설명을 출력하지 마세요. <think> 태그를 쓰지 말고, 다른 텍스트 없이 오직 위 JSON 객체 하나만 바로 출력하세요.`;
 
 const DEFAULT_GROQ_VISION_MODEL = 'qwen/qwen3.6-27b';
 // Groq는 종종 비전 모델을 교체/폐지합니다. 예전에 저장된 모델명이 더 이상 동작하지 않으면
@@ -1123,7 +1124,7 @@ async function analyzeImageWithGroqVision(dataUrl, apiKey, model) {
     },
     body: JSON.stringify({
       model: model || DEFAULT_GROQ_VISION_MODEL,
-      max_tokens: 500,
+      max_tokens: 2000,
       temperature: 0,
       messages: [
         {
@@ -1141,9 +1142,14 @@ async function analyzeImageWithGroqVision(dataUrl, apiKey, model) {
     throw new Error(`API 오류(${res.status}): ${t.slice(0, 150)}`);
   }
   const json = await res.json();
-  const text = (json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || '';
+  const rawText = (json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || '';
+  // 일부 Groq 모델(qwen3.6 등)은 답변 전에 <think>...</think> 추론 과정을 먼저 출력합니다.
+  // 답이 잘려서 </think>가 없을 수도 있으므로, 닫히지 않은 경우 <think> 이후 전체를 버립니다.
+  const text = rawText.includes('<think>')
+    ? (rawText.includes('</think>') ? rawText.replace(/<think>[\s\S]*?<\/think>/g, '') : rawText.slice(0, rawText.indexOf('<think>')))
+    : rawText;
   const parsed = parseJsonLoose(text);
-  if (!parsed) throw new Error('AI 응답을 이해하지 못했습니다: ' + (text.trim().slice(0, 150) || '(빈 응답)'));
+  if (!parsed) throw new Error('AI 응답을 이해하지 못했습니다: ' + (text.trim().slice(0, 150) || rawText.trim().slice(0, 150) || '(빈 응답)'));
   return parsed;
 }
 
