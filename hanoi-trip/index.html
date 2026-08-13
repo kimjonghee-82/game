@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>하노이 · 사파 여행 플래너</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="app-header">
+  <h1>🇻🇳 하노이·사파 여행 플래너</h1>
+  <nav id="tab-nav">
+    <button class="tab-btn active" data-tab="itinerary">일정</button>
+    <button class="tab-btn" data-tab="expense">비용</button>
+    <button class="tab-btn" data-tab="reference">참고사항</button>
+    <button class="tab-btn" data-tab="phrases">기본 대화</button>
+  </nav>
+  <button id="btn-settings" title="설정 (API 키 등)">⚙️ 설정</button>
+</header>
+
+<main id="app-main">
+
+  <!-- ================= 일정 ================= -->
+  <section id="tab-itinerary" class="tab-panel active">
+    <div class="toolbar">
+      <button id="btn-add-entry" class="btn primary">+ 일정 추가</button>
+      <button id="btn-upload-photo" class="btn">📷 사진으로 일정 추가</button>
+      <button id="btn-add-day" class="btn ghost">+ 날짜 추가</button>
+      <button id="btn-export-sheet" class="btn ghost">📊 구글 시트로 내보내기</button>
+      <span id="itinerary-status" class="status-text"></span>
+    </div>
+    <div class="grid-wrap">
+      <table id="itinerary-grid"></table>
+    </div>
+  </section>
+
+  <!-- ================= 비용 ================= -->
+  <section id="tab-expense" class="tab-panel">
+    <div class="toolbar">
+      <button id="btn-add-expense" class="btn primary">+ 비용 추가</button>
+      <button id="btn-upload-receipt" class="btn">📷 영수증으로 추가</button>
+      <span id="expense-status" class="status-text"></span>
+    </div>
+    <div id="expense-summary" class="summary-cards"></div>
+    <div class="grid-wrap">
+      <table id="expense-table">
+        <thead>
+          <tr>
+            <th>날짜</th><th>시간</th><th>장소/항목</th><th>분류</th>
+            <th>금액</th><th>원화 환산</th><th>메모</th><th>출처</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="expense-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= 참고사항 ================= -->
+  <section id="tab-reference" class="tab-panel">
+    <div class="ref-columns">
+      <div class="ref-col" data-region="hanoi">
+        <div class="ref-col-head">
+          <h2>하노이 추천 맛집·명소</h2>
+          <button class="btn small" data-add-ref="hanoi">+ 추가</button>
+        </div>
+        <ul class="ref-list" id="ref-list-hanoi"></ul>
+      </div>
+      <div class="ref-col" data-region="sapa">
+        <div class="ref-col-head">
+          <h2>사파 추천 맛집·명소</h2>
+          <button class="btn small" data-add-ref="sapa">+ 추가</button>
+        </div>
+        <ul class="ref-list" id="ref-list-sapa"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 기본 대화 ================= -->
+  <section id="tab-phrases" class="tab-panel">
+    <div class="toolbar">
+      <input id="phrase-search" type="text" placeholder="상황이나 문장 검색...">
+    </div>
+    <div id="phrase-categories"></div>
+  </section>
+
+</main>
+
+<!-- ============ 모달들 ============ -->
+
+<div id="modal-backdrop" class="modal-backdrop hidden"></div>
+
+<!-- 일정 항목 편집 -->
+<div id="modal-entry" class="modal hidden">
+  <h3 id="entry-modal-title">일정 추가</h3>
+  <input type="hidden" id="entry-id">
+  <label>날짜 <select id="entry-date"></select></label>
+  <label>시간 <input type="time" id="entry-time"></label>
+  <label>내용 <input type="text" id="entry-text" placeholder="예: 8:30 집 출발"></label>
+  <label>분류
+    <select id="entry-category">
+      <option value="이동">이동</option>
+      <option value="식사">식사</option>
+      <option value="관광">관광</option>
+      <option value="숙소">숙소</option>
+      <option value="쇼핑">쇼핑</option>
+      <option value="기타">기타</option>
+    </select>
+  </label>
+  <label class="checkbox-row"><input type="checkbox" id="entry-lodging"> 이 날의 숙소 정보로 표시</label>
+  <fieldset class="cost-fieldset">
+    <legend>비용 (선택)</legend>
+    <div class="cost-row">
+      <input type="number" id="entry-cost-amount" placeholder="금액">
+      <select id="entry-cost-currency">
+        <option value="VND">VND</option>
+        <option value="KRW">KRW</option>
+        <option value="USD">USD</option>
+      </select>
+    </div>
+  </fieldset>
+  <div class="modal-actions">
+    <button id="entry-delete-btn" class="btn danger">삭제</button>
+    <div class="spacer"></div>
+    <button id="entry-cancel-btn" class="btn ghost">취소</button>
+    <button id="entry-save-btn" class="btn primary">저장</button>
+  </div>
+</div>
+
+<!-- 비용 편집 -->
+<div id="modal-expense" class="modal hidden">
+  <h3 id="expense-modal-title">비용 추가</h3>
+  <input type="hidden" id="expense-id">
+  <label>날짜 <input type="date" id="expense-date"></label>
+  <label>시간 <input type="time" id="expense-time"></label>
+  <label>장소/항목 <input type="text" id="expense-place" placeholder="예: 하노이 시내 점심"></label>
+  <label>분류
+    <select id="expense-category">
+      <option value="교통">교통</option>
+      <option value="식사">식사</option>
+      <option value="관광/입장료">관광/입장료</option>
+      <option value="숙박">숙박</option>
+      <option value="쇼핑">쇼핑</option>
+      <option value="기타">기타</option>
+    </select>
+  </label>
+  <div class="cost-row">
+    <input type="number" id="expense-amount" placeholder="금액">
+    <select id="expense-currency">
+      <option value="VND">VND</option>
+      <option value="KRW">KRW</option>
+      <option value="USD">USD</option>
+    </select>
+  </div>
+  <label>메모 <input type="text" id="expense-memo"></label>
+  <div class="modal-actions">
+    <button id="expense-delete-btn" class="btn danger">삭제</button>
+    <div class="spacer"></div>
+    <button id="expense-cancel-btn" class="btn ghost">취소</button>
+    <button id="expense-save-btn" class="btn primary">저장</button>
+  </div>
+</div>
+
+<!-- 참고사항 항목 편집 -->
+<div id="modal-ref" class="modal hidden">
+  <h3>참고사항 항목</h3>
+  <input type="hidden" id="ref-id">
+  <input type="hidden" id="ref-region">
+  <label>구분
+    <select id="ref-type">
+      <option value="맛집">맛집</option>
+      <option value="명소">명소</option>
+    </select>
+  </label>
+  <label>이름 <input type="text" id="ref-name"></label>
+  <label>설명 <textarea id="ref-desc" rows="3"></textarea></label>
+  <div class="modal-actions">
+    <button id="ref-delete-btn" class="btn danger">삭제</button>
+    <div class="spacer"></div>
+    <button id="ref-cancel-btn" class="btn ghost">취소</button>
+    <button id="ref-save-btn" class="btn primary">저장</button>
+  </div>
+</div>
+
+<!-- 사진 업로드 / 분석 결과 확인 -->
+<div id="modal-photo" class="modal hidden">
+  <h3>사진 분석</h3>
+  <div id="photo-preview-wrap"><img id="photo-preview" alt="미리보기"></div>
+  <div id="photo-analyze-status" class="status-text">분석 대기 중...</div>
+  <div id="photo-result-fields" class="hidden">
+    <label>날짜 <select id="photo-date"></select></label>
+    <label>시간 <input type="time" id="photo-time"></label>
+    <label>내용 <input type="text" id="photo-text"></label>
+    <label>분류
+      <select id="photo-category">
+        <option value="이동">이동</option>
+        <option value="식사">식사</option>
+        <option value="관광">관광</option>
+        <option value="숙소">숙소</option>
+        <option value="쇼핑">쇼핑</option>
+        <option value="기타">기타</option>
+      </select>
+    </label>
+    <label class="checkbox-row"><input type="checkbox" id="photo-is-cost"> 영수증/입장권 (비용으로도 기록)</label>
+    <div id="photo-cost-fields" class="cost-row hidden">
+      <input type="number" id="photo-cost-amount" placeholder="금액">
+      <select id="photo-cost-currency">
+        <option value="VND">VND</option>
+        <option value="KRW">KRW</option>
+        <option value="USD">USD</option>
+      </select>
+    </div>
+  </div>
+  <div class="modal-actions">
+    <div class="spacer"></div>
+    <button id="photo-cancel-btn" class="btn ghost">취소</button>
+    <button id="photo-save-btn" class="btn primary hidden">일정에 추가</button>
+  </div>
+</div>
+<input type="file" id="photo-file-input" accept="image/*" class="hidden">
+
+<!-- 설정 -->
+<div id="modal-settings" class="modal hidden">
+  <h3>설정</h3>
+  <p class="help-text">아래 값들은 이 브라우저에만(localStorage) 저장되며, 깃허브 저장소에는 절대 올라가지 않습니다.</p>
+
+  <label>여행 시작일 <input type="date" id="settings-start-date"></label>
+  <label>여행 종료일 <input type="date" id="settings-end-date"></label>
+
+  <h4>사진 분석용 Anthropic API 키</h4>
+  <p class="help-text">사진 속 장소/영수증 내용을 실제로 읽어내는 데 사용됩니다. <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>에서 발급받으세요. (미입력 시 사진의 촬영시간·GPS 위치만 자동 인식됩니다)</p>
+  <input type="password" id="settings-anthropic-key" placeholder="sk-ant-...">
+
+  <h4>구글 시트 연동 (OAuth 클라이언트 ID)</h4>
+  <p class="help-text">Google Cloud Console에서 발급받은 <b>OAuth 2.0 클라이언트 ID(웹 애플리케이션)</b>를 입력하세요. 발급 방법은 채팅 안내를 참고하세요.</p>
+  <input type="text" id="settings-google-client-id" placeholder="xxxxxxxx.apps.googleusercontent.com">
+
+  <div class="modal-actions">
+    <div class="spacer"></div>
+    <button id="settings-cancel-btn" class="btn ghost">닫기</button>
+    <button id="settings-save-btn" class="btn primary">저장</button>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="app.js"></script>
+</body>
+</html>
