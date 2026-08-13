@@ -1039,6 +1039,8 @@ function parseVideoEmbed(url) {
   if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(u)) return { type: 'file', src: u };
   const yt = /(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/.exec(u);
   if (yt) return { type: 'youtube', id: yt[1] };
+  const gd = /drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?id=)([a-zA-Z0-9_-]+)/.exec(u);
+  if (gd) return { type: 'gdrive', id: gd[1] };
   return null;
 }
 
@@ -1052,7 +1054,12 @@ function renderOtherTab() {
       if (embed && embed.type === 'file') {
         embedHtml = `<video src="${escapeHtml(embed.src)}" controls preload="metadata"></video>`;
       } else if (embed && embed.type === 'youtube') {
-        embedHtml = `<iframe src="https://www.youtube-nocookie.com/embed/${embed.id}" title="${escapeHtml(v.title || '')}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+        embedHtml = `<div class="video-thumb" data-yt-id="${embed.id}" data-title="${escapeHtml(v.title || '')}">
+          <img src="https://img.youtube.com/vi/${embed.id}/hqdefault.jpg" alt="${escapeHtml(v.title || '')}" loading="lazy">
+          <div class="video-play-btn">▶</div>
+        </div>`;
+      } else if (embed && embed.type === 'gdrive') {
+        embedHtml = `<iframe src="https://drive.google.com/file/d/${embed.id}/preview" title="${escapeHtml(v.title || '')}" loading="lazy" allow="autoplay" allowfullscreen></iframe>`;
       } else {
         embedHtml = `<div class="video-broken">유효한 영상 링크가 아닙니다</div>`;
       }
@@ -1069,7 +1076,13 @@ function renderOtherTab() {
 
 document.getElementById('other-video-list').addEventListener('click', (e) => {
   const btn = e.target.closest('.video-edit-btn');
-  if (btn) openVideoModal(btn.dataset.id);
+  if (btn) { openVideoModal(btn.dataset.id); return; }
+  const thumb = e.target.closest('.video-thumb');
+  if (thumb) {
+    const id = thumb.dataset.ytId;
+    const title = thumb.dataset.title;
+    thumb.outerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1" title="${title}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+  }
 });
 document.getElementById('btn-add-video').addEventListener('click', () => openVideoModal(null));
 
