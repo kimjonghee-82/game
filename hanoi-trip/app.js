@@ -818,6 +818,40 @@ document.getElementById('region-tabs').addEventListener('click', (e) => {
   renderReferenceTab();
 });
 
+/** 하노이/사파(및 추가된 지역) 사이를 화면 스와이프로 이동 */
+function goToAdjacentRegion(delta) {
+  const keys = getRegionKeys();
+  const idx = keys.indexOf(refRegion);
+  const nextIdx = idx + delta;
+  if (nextIdx < 0 || nextIdx >= keys.length) return;
+  refRegion = keys[nextIdx];
+  renderReferenceTab();
+  const list = document.getElementById('ref-list-active');
+  list.style.setProperty('--swipe-dir', delta > 0 ? '24px' : '-24px');
+  list.classList.remove('swipe-anim');
+  void list.offsetWidth; // 애니메이션 재시작을 위한 강제 리플로우
+  list.classList.add('swipe-anim');
+}
+
+(() => {
+  let startX = 0, startY = 0, tracking = false;
+  const section = document.getElementById('tab-reference');
+  section.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    startX = t.clientX; startY = t.clientY; tracking = true;
+  }, { passive: true });
+  section.addEventListener('touchend', (e) => {
+    if (!tracking) return;
+    tracking = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      goToAdjacentRegion(dx < 0 ? 1 : -1);
+    }
+  }, { passive: true });
+})();
+
 document.getElementById('ref-list-active').addEventListener('click', (e) => {
   const li = e.target.closest('.ref-item');
   if (li) openRefModal(refRegion, li.dataset.id);

@@ -169,7 +169,12 @@ body{
 .region-tabs{display:flex;gap:6px;background:#fafafa;border:1px solid var(--line);border-radius:10px;padding:6px;margin-bottom:14px}
 .region-tab-btn{flex:1;background:transparent;border:none;padding:10px;border-radius:8px;font-size:14px;font-weight:bold;color:var(--muted);cursor:pointer;font-family:inherit}
 .region-tab-btn.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.ref-list{list-style:none;padding:0 0 84px;margin:0;display:flex;flex-direction:column;gap:8px}
+.ref-list{list-style:none;padding:0 0 84px;margin:0;display:flex;flex-direction:column;gap:8px;touch-action:pan-y}
+.ref-list.swipe-anim{animation:refSwipeIn .22s ease-out}
+@keyframes refSwipeIn{
+  from{opacity:0;transform:translateX(var(--swipe-dir,24px))}
+  to{opacity:1;transform:translateX(0)}
+}
 .ref-item{border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer}
 .ref-item:hover{background:#fafafa}
 .ref-item .ref-item-title{font-weight:bold;font-size:14px;color:var(--ink)}
