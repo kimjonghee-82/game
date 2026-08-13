@@ -230,7 +230,7 @@ function loadSettings() {
     startDate: '2026-08-15',
     endDate: '2026-08-23',
     groqApiKey: '',
-    groqVisionModel: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    groqVisionModel: '',
     googleClientId: '',
     googleSpreadsheetId: '',
   });
@@ -1099,6 +1099,21 @@ const RECEIPT_ANALYSIS_PROMPT = `당신은 베트남(하노이/사파) 여행 �
   "description": "내용에 대한 한 문장 요약 (한국어)"
 }`;
 
+const DEFAULT_GROQ_VISION_MODEL = 'qwen/qwen3.6-27b';
+// Groq는 종종 비전 모델을 교체/폐지합니다. 예전에 저장된 모델명이 더 이상 동작하지 않으면
+// 자동으로 최신 기본 모델로 대체합니다 (설정 화면에서 직접 바꾼 값은 그대로 존중).
+const DEPRECATED_GROQ_VISION_MODELS = [
+  'meta-llama/llama-4-scout-17b-16e-instruct',
+  'meta-llama/llama-4-maverick-17b-128e-instruct',
+  'llama-3.2-11b-vision-preview',
+  'llama-3.2-90b-vision-preview',
+];
+function resolveGroqVisionModel(saved) {
+  const model = (saved || '').trim();
+  if (!model || DEPRECATED_GROQ_VISION_MODELS.includes(model)) return DEFAULT_GROQ_VISION_MODEL;
+  return model;
+}
+
 async function analyzeImageWithGroqVision(dataUrl, apiKey, model) {
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -1107,7 +1122,7 @@ async function analyzeImageWithGroqVision(dataUrl, apiKey, model) {
       'Authorization': 'Bearer ' + apiKey,
     },
     body: JSON.stringify({
-      model: model || 'meta-llama/llama-4-scout-17b-16e-instruct',
+      model: model || DEFAULT_GROQ_VISION_MODEL,
       max_tokens: 500,
       temperature: 0,
       messages: [
@@ -1148,11 +1163,14 @@ async function analyzePhoto(file, statusEl) {
   const exif = await readExifInfo(file);
 
   let vision = null;
+  let aiError = null;
   if (settings.groqApiKey) {
     setStatus('AI가 사진을 분석하는 중...');
     try {
-      vision = await analyzeImageWithGroqVision(resized, settings.groqApiKey, settings.groqVisionModel);
+      const model = resolveGroqVisionModel(settings.groqVisionModel);
+      vision = await analyzeImageWithGroqVision(resized, settings.groqApiKey, model);
     } catch (e) {
+      aiError = e.message;
       toast('AI 분석 실패: ' + e.message, 5000);
     }
   }
@@ -1165,7 +1183,9 @@ async function analyzePhoto(file, statusEl) {
 
   setStatus(vision
     ? 'AI 분석 완료 — 내용을 확인하고 저장하세요'
-    : (exif.takenAt || exif.lat ? '사진 메타데이터로 채웠습니다 — 확인 후 저장하세요' : '인식된 정보가 없습니다. 직접 입력해주세요'));
+    : aiError
+      ? `AI 분석 실패: ${aiError} — ${exif.takenAt || exif.lat ? '메타데이터로 채웠습니다' : '직접 입력해주세요'}`
+      : (exif.takenAt || exif.lat ? '사진 메타데이터로 채웠습니다 — 확인 후 저장하세요' : '인식된 정보가 없습니다. 직접 입력해주세요'));
 
   return {
     date: (vision && vision.date_on_receipt) || (exif.takenAt && exif.takenAt.date) || null,
@@ -1313,7 +1333,7 @@ function openSettingsModal() {
   document.getElementById('settings-start-date').value = s.startDate;
   document.getElementById('settings-end-date').value = s.endDate;
   document.getElementById('settings-groq-key').value = s.groqApiKey || '';
-  document.getElementById('settings-groq-model').value = s.groqVisionModel || 'meta-llama/llama-4-scout-17b-16e-instruct';
+  document.getElementById('settings-groq-model').value = (s.groqVisionModel && !DEPRECATED_GROQ_VISION_MODELS.includes(s.groqVisionModel)) ? s.groqVisionModel : '';
   document.getElementById('settings-google-client-id').value = s.googleClientId || '';
   document.getElementById('settings-export-code').value = '';
   document.getElementById('settings-import-code').value = '';
@@ -1327,7 +1347,7 @@ document.getElementById('settings-save-btn').addEventListener('click', () => {
   s.startDate = document.getElementById('settings-start-date').value || s.startDate;
   s.endDate = document.getElementById('settings-end-date').value || s.endDate;
   s.groqApiKey = document.getElementById('settings-groq-key').value.trim();
-  s.groqVisionModel = document.getElementById('settings-groq-model').value.trim() || 'meta-llama/llama-4-scout-17b-16e-instruct';
+  s.groqVisionModel = document.getElementById('settings-groq-model').value.trim();
   s.googleClientId = document.getElementById('settings-google-client-id').value.trim();
   saveSettings(s);
   renderItineraryGrid();
@@ -1352,7 +1372,7 @@ document.getElementById('settings-export-btn').addEventListener('click', () => {
     startDate: document.getElementById('settings-start-date').value || s.startDate,
     endDate: document.getElementById('settings-end-date').value || s.endDate,
     groqApiKey: document.getElementById('settings-groq-key').value.trim(),
-    groqVisionModel: document.getElementById('settings-groq-model').value.trim() || 'meta-llama/llama-4-scout-17b-16e-instruct',
+    groqVisionModel: document.getElementById('settings-groq-model').value.trim(),
     googleClientId: document.getElementById('settings-google-client-id').value.trim(),
   };
   const code = toBase64Unicode(JSON.stringify(current));
@@ -1389,7 +1409,7 @@ document.getElementById('settings-import-btn').addEventListener('click', () => {
   document.getElementById('settings-start-date').value = s.startDate;
   document.getElementById('settings-end-date').value = s.endDate;
   document.getElementById('settings-groq-key').value = s.groqApiKey || '';
-  document.getElementById('settings-groq-model').value = s.groqVisionModel || 'meta-llama/llama-4-scout-17b-16e-instruct';
+  document.getElementById('settings-groq-model').value = (s.groqVisionModel && !DEPRECATED_GROQ_VISION_MODELS.includes(s.groqVisionModel)) ? s.groqVisionModel : '';
   document.getElementById('settings-google-client-id').value = s.googleClientId || '';
   document.getElementById('settings-import-code').value = '';
   renderItineraryGrid();
