@@ -282,12 +282,16 @@ function toast(msg, ms) {
   toast._t = setTimeout(() => el.classList.add('hidden'), ms || 3200);
 }
 
+function dateStrLocal(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function dateRange(start, end) {
   const out = [];
   let d = new Date(start + 'T00:00:00');
   const endD = new Date(end + 'T00:00:00');
   while (d <= endD) {
-    out.push(d.toISOString().slice(0, 10));
+    out.push(dateStrLocal(d));
     d.setDate(d.getDate() + 1);
   }
   return out;
@@ -340,8 +344,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 /* ============================== 날짜 이동(하루 단위 보기) ============================== */
 
 function todayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return dateStrLocal(new Date());
 }
 
 function computeInitialViewDate() {
@@ -713,7 +716,7 @@ document.getElementById('expense-delete-btn').addEventListener('click', () => {
 
 async function getRateToKrw(currency) {
   const cache = loadFxCache();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   const cacheEntry = cache[currency];
   if (cacheEntry && cacheEntry.fetchedOn === today) return cacheEntry.rate;
 
