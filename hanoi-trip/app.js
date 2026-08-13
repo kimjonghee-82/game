@@ -230,7 +230,7 @@ function loadSettings() {
     startDate: '2026-08-15',
     endDate: '2026-08-23',
     groqApiKey: '',
-    groqModel: 'llama-3.3-70b-versatile',
+    groqVisionModel: 'meta-llama/llama-4-scout-17b-16e-instruct',
     googleClientId: '',
     googleSpreadsheetId: '',
   });
@@ -1084,43 +1084,22 @@ async function reverseGeocode(lat, lon) {
   } catch (e) { return null; }
 }
 
-const RECEIPT_ANALYSIS_PROMPT = `다음은 베트남(하노이/사파) 여행 중 촬영한 사진에서 OCR로 인식한 텍스트입니다. OCR 결과라 오탈자나 줄바꿈 깨짐이 있을 수 있습니다.
-아래 JSON 형식으로만 답변하세요 (다른 설명 없이 JSON만):
+const RECEIPT_ANALYSIS_PROMPT = `당신은 베트남(하노이/사파) 여행 중 촬영하거나 캡처한 사진을 분석하는 도우미입니다. 사진은 영수증, 입장권/탑승권, 예약 확인서, 스크린샷, 간판, 메뉴판 등일 수 있고 한국어/영어/베트남어가 섞여 있을 수 있습니다.
+사진 속 글자와 내용을 직접 읽고 상황에 맞게 이해해서, 아래 JSON 형식으로만 답변하세요 (다른 설명 없이 JSON만):
 {
-  "is_receipt": true 또는 false (영수증/입장권/티켓으로 보이면 true),
-  "vendor": "가게/장소 이름(상호) 또는 null",
+  "is_receipt": true 또는 false (영수증/입장권/티켓/예약확인서처럼 비용이 발생한 내역으로 보이면 true),
+  "vendor": "가게/장소/서비스 이름(상호) 또는 null",
   "place": "주소나 지역/장소 이름 또는 null",
-  "amount": 숫자 또는 null (영수증일 경우 총액 숫자만, 통화 기호/구분자 제외),
+  "amount": 숫자 또는 null (영수증일 경우 총 결제금액 숫자만, 통화 기호/구분자 제외),
   "currency": "VND" 또는 "KRW" 또는 "USD" 또는 null,
-  "date_on_receipt": "YYYY-MM-DD" 또는 null,
-  "time_on_receipt": "HH:MM" 또는 null,
+  "date_on_receipt": "YYYY-MM-DD" 또는 null (사진에 적힌 예약일/탑승일/결제일 등의 날짜. 사진을 촬영한 날짜가 아니라 사진 내용 속의 날짜),
+  "time_on_receipt": "HH:MM" 또는 null (사진에 적힌 탑승/이용/결제 시간. 사진을 촬영한 시각이 아니라 사진 내용 속의 시간),
   "category": "이동" "식사" "관광" "숙소" "쇼핑" "기타" 중 하나,
   "website": "사진 속에 보이는 웹사이트/홈페이지 주소가 있다면 그 값, 없으면 null",
   "description": "내용에 대한 한 문장 요약 (한국어)"
 }`;
 
-let _tesseractWorker = null;
-async function getTesseractWorker() {
-  if (_tesseractWorker) return _tesseractWorker;
-  _tesseractWorker = await Tesseract.createWorker('eng+vie', 1, {
-    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
-    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core-simd-lstm.wasm.js',
-  });
-  return _tesseractWorker;
-}
-
-async function ocrImage(dataUrl) {
-  try {
-    const worker = await getTesseractWorker();
-    const { data } = await worker.recognize(dataUrl);
-    return (data.text || '').replace(/\n+/g, ' ').trim();
-  } catch (e) {
-    console.warn('OCR 실패', e);
-    return '';
-  }
-}
-
-async function analyzeTextWithGroq(ocrText, apiKey, model) {
+async function analyzeImageWithGroqVision(dataUrl, apiKey, model) {
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -1128,12 +1107,17 @@ async function analyzeTextWithGroq(ocrText, apiKey, model) {
       'Authorization': 'Bearer ' + apiKey,
     },
     body: JSON.stringify({
-      model: model || 'llama-3.3-70b-versatile',
+      model: model || 'meta-llama/llama-4-scout-17b-16e-instruct',
       max_tokens: 500,
       temperature: 0,
       messages: [
-        { role: 'system', content: RECEIPT_ANALYSIS_PROMPT },
-        { role: 'user', content: `OCR 텍스트:\n${ocrText}` },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: RECEIPT_ANALYSIS_PROMPT },
+            { type: 'image_url', image_url: { url: dataUrl } },
+          ],
+        },
       ],
     }),
   });
@@ -1153,7 +1137,7 @@ function parseJsonLoose(text) {
   return null;
 }
 
-/** 사진 하나를 분석(EXIF + OCR + Groq)해서 정리된 정보를 반환. statusEl에 진행 상태를 표시. */
+/** 사진 하나를 분석해서 정리된 정보를 반환. AI 비전 분석을 먼저 시도하고, 불가능하거나 실패하면 EXIF 메타데이터로 대체. statusEl에 진행 상태를 표시. */
 async function analyzePhoto(file, statusEl) {
   const settings = loadSettings();
   const setStatus = (t) => { if (statusEl) statusEl.textContent = t; };
@@ -1163,23 +1147,20 @@ async function analyzePhoto(file, statusEl) {
   const thumb = await resizeImageToDataUrl(file, 400, 0.6);
   const exif = await readExifInfo(file);
 
-  let geoPlace = null;
-  if (exif.lat && exif.lon) {
-    setStatus('위치 정보 확인 중...');
-    geoPlace = await reverseGeocode(exif.lat, exif.lon);
-  }
-
-  setStatus('사진에서 글자 인식 중 (OCR)...');
-  const ocrText = await ocrImage(resized);
-
   let vision = null;
-  if (settings.groqApiKey && ocrText.replace(/\s/g, '').length >= 2) {
-    setStatus('AI가 인식된 텍스트를 분석하는 중...');
+  if (settings.groqApiKey) {
+    setStatus('AI가 사진을 분석하는 중...');
     try {
-      vision = await analyzeTextWithGroq(ocrText, settings.groqApiKey, settings.groqModel);
+      vision = await analyzeImageWithGroqVision(resized, settings.groqApiKey, settings.groqVisionModel);
     } catch (e) {
       toast('AI 분석 실패: ' + e.message, 5000);
     }
+  }
+
+  let geoPlace = null;
+  if ((!vision || !vision.place) && exif.lat && exif.lon) {
+    setStatus('위치 정보 확인 중...');
+    geoPlace = await reverseGeocode(exif.lat, exif.lon);
   }
 
   setStatus(vision
@@ -1332,7 +1313,7 @@ function openSettingsModal() {
   document.getElementById('settings-start-date').value = s.startDate;
   document.getElementById('settings-end-date').value = s.endDate;
   document.getElementById('settings-groq-key').value = s.groqApiKey || '';
-  document.getElementById('settings-groq-model').value = s.groqModel || 'llama-3.3-70b-versatile';
+  document.getElementById('settings-groq-model').value = s.groqVisionModel || 'meta-llama/llama-4-scout-17b-16e-instruct';
   document.getElementById('settings-google-client-id').value = s.googleClientId || '';
   document.getElementById('settings-export-code').value = '';
   document.getElementById('settings-import-code').value = '';
@@ -1346,7 +1327,7 @@ document.getElementById('settings-save-btn').addEventListener('click', () => {
   s.startDate = document.getElementById('settings-start-date').value || s.startDate;
   s.endDate = document.getElementById('settings-end-date').value || s.endDate;
   s.groqApiKey = document.getElementById('settings-groq-key').value.trim();
-  s.groqModel = document.getElementById('settings-groq-model').value.trim() || 'llama-3.3-70b-versatile';
+  s.groqVisionModel = document.getElementById('settings-groq-model').value.trim() || 'meta-llama/llama-4-scout-17b-16e-instruct';
   s.googleClientId = document.getElementById('settings-google-client-id').value.trim();
   saveSettings(s);
   renderItineraryGrid();
@@ -1371,7 +1352,7 @@ document.getElementById('settings-export-btn').addEventListener('click', () => {
     startDate: document.getElementById('settings-start-date').value || s.startDate,
     endDate: document.getElementById('settings-end-date').value || s.endDate,
     groqApiKey: document.getElementById('settings-groq-key').value.trim(),
-    groqModel: document.getElementById('settings-groq-model').value.trim() || 'llama-3.3-70b-versatile',
+    groqVisionModel: document.getElementById('settings-groq-model').value.trim() || 'meta-llama/llama-4-scout-17b-16e-instruct',
     googleClientId: document.getElementById('settings-google-client-id').value.trim(),
   };
   const code = toBase64Unicode(JSON.stringify(current));
@@ -1408,7 +1389,7 @@ document.getElementById('settings-import-btn').addEventListener('click', () => {
   document.getElementById('settings-start-date').value = s.startDate;
   document.getElementById('settings-end-date').value = s.endDate;
   document.getElementById('settings-groq-key').value = s.groqApiKey || '';
-  document.getElementById('settings-groq-model').value = s.groqModel || 'llama-3.3-70b-versatile';
+  document.getElementById('settings-groq-model').value = s.groqVisionModel || 'meta-llama/llama-4-scout-17b-16e-instruct';
   document.getElementById('settings-google-client-id').value = s.googleClientId || '';
   document.getElementById('settings-import-code').value = '';
   renderItineraryGrid();
