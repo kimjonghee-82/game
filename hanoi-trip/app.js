@@ -705,7 +705,7 @@ function renderExpenseTab() {
     if (e.currency === 'KRW') return;
     origSums[e.currency] = (origSums[e.currency] || 0) + e.amount;
   });
-  document.getElementById('expense-total-krw').textContent = fmtAmount(Math.round(totalKrw)) + '원';
+  document.getElementById('expense-total-krw').innerHTML = (expenseCumulativeView ? '<span class="expense-total-prefix">누적 합계 </span>' : '') + fmtAmount(Math.round(totalKrw)) + '원';
   document.getElementById('expense-total-orig').textContent = Object.keys(origSums)
     .map(cur => `${fmtAmount(origSums[cur])} ${cur}`)
     .join(' · ');
