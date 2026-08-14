@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>하노이 · 사파 여행 플래너</title>
-<link rel="stylesheet" href="style.css?v=34">
+<link rel="stylesheet" href="style.css?v=35">
 </head>
 <body>
 
@@ -273,6 +273,12 @@
     <input type="text" id="video-url" placeholder="유튜브 / 구글 드라이브 / mp4·webm 링크">
   </label>
   <p class="help-text" style="margin-top:-6px">유튜브 링크는 광고가 그대로 노출될 수 있어요. 구글 드라이브 공유 링크(링크가 있는 모든 사용자로 공유) 또는 mp4/webm 파일 링크를 넣으면 광고 없이 재생됩니다.</p>
+  <label>화면 비율
+    <select id="video-orientation">
+      <option value="landscape">가로 (일반 촬영)</option>
+      <option value="portrait">세로 (휴대폰으로 세로로 찍은 영상)</option>
+    </select>
+  </label>
   <div class="modal-actions">
     <button id="video-delete-btn" class="btn danger">삭제</button>
     <div class="spacer"></div>
@@ -369,6 +375,6 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script src="app.js?v=34"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>

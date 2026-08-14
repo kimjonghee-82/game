@@ -1197,7 +1197,7 @@ function renderOtherTab() {
         embedHtml = `<div class="video-broken">유효한 영상 링크가 아닙니다</div>`;
       }
       return `<div class="video-card">
-        <div class="video-embed">${embedHtml}</div>
+        <div class="video-embed${v.orientation === 'portrait' ? ' portrait' : ''}">${embedHtml}</div>
         <div class="video-title-row" data-id="${v.id}">
           <span class="video-title">${escapeHtml(v.title || '')}</span>
           <button type="button" class="icon-btn video-edit-btn" data-id="${v.id}" title="수정">✏️</button>
@@ -1265,6 +1265,7 @@ function openVideoModal(region, videoId) {
   document.getElementById('video-region-input').value = regionLabel(region);
   document.getElementById('video-title').value = v.title || '';
   document.getElementById('video-url').value = v.url || '';
+  document.getElementById('video-orientation').value = v.orientation === 'portrait' ? 'portrait' : 'landscape';
   openModal('modal-video');
 }
 
@@ -1278,6 +1279,7 @@ document.getElementById('video-save-btn').addEventListener('click', () => {
   const region = regionKeyForLabel(regionLabelInput);
   const title = document.getElementById('video-title').value.trim();
   const url = document.getElementById('video-url').value.trim();
+  const orientation = document.getElementById('video-orientation').value === 'portrait' ? 'portrait' : 'landscape';
   if (!url) { toast('영상 링크를 입력해주세요'); return; }
   if (!parseVideoEmbed(url)) { toast('유튜브 링크 또는 mp4/webm 파일 링크를 입력해주세요'); return; }
 
@@ -1288,7 +1290,7 @@ document.getElementById('video-save-btn').addEventListener('click', () => {
   videos[region] = videos[region] || [];
   let v = videos[region].find(x => x.id === id);
   if (!v) { v = { id: uid() }; videos[region].push(v); }
-  Object.assign(v, { title, url });
+  Object.assign(v, { title, url, orientation });
   saveVideos(videos);
   videoRegion = region;
   renderOtherTab();
