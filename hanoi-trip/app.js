@@ -14,6 +14,9 @@ const STORAGE_KEYS = {
   translations: 'hanoi_trip_translations_v1',
 };
 
+/** 여러 기기 간 실시간 동기화 대상 (Firestore 로 미러링됨). 번역/음성 기록 등은 기기 로컬 전용. */
+const SYNC_STORAGE_KEYS = [STORAGE_KEYS.itinerary, STORAGE_KEYS.expenses, STORAGE_KEYS.reference, STORAGE_KEYS.otherVideos];
+
 const TRANSLATE_SOURCE_LANGS = ['자동 감지', '베트남어', '영어', '중국어', '일본어'];
 
 const ITINERARY_CATEGORIES = ['이동', '식사', '관광', '숙소', '쇼핑', '기타'];
@@ -227,6 +230,7 @@ function load(key, fallback) {
 }
 function save(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+  if (SYNC_STORAGE_KEYS.includes(key)) scheduleSyncPush();
 }
 
 function loadSettings() {
@@ -238,6 +242,7 @@ function loadSettings() {
     googleClientId: '',
     googleSpreadsheetId: '',
     translateSourceLang: '베트남어',
+    tripCode: '',
   });
 }
 function saveSettings(s) { save(STORAGE_KEYS.settings, s); }
@@ -265,6 +270,93 @@ function loadVideos() {
 function saveVideos(v) { save(STORAGE_KEYS.otherVideos, v); }
 function loadTranslations() { return load(STORAGE_KEYS.translations, []); }
 function saveTranslations(v) { save(STORAGE_KEYS.translations, v); }
+
+/* ============================== 실시간 동기화 (Firebase Firestore) ==============================
+   일정/비용/참고사항/기타(영상) 데이터를 기기 간 실시간으로 동기화합니다.
+   firebaseConfig 의 apiKey 는 비밀키가 아니라 공개돼도 되는 값이며(구글 공식 안내),
+   실제 데이터 보호는 Firestore 보안 규칙(트립 코드 문서 단위)으로 처리합니다. */
+
+const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyCkoOhA13JI_ZeESSzPG_K3ZUEdQMWBdBw',
+  authDomain: 'hanoi-trip-54221.firebaseapp.com',
+  projectId: 'hanoi-trip-54221',
+  storageBucket: 'hanoi-trip-54221.firebasestorage.app',
+  messagingSenderId: '946787204606',
+  appId: '1:946787204606:web:f5b58d59d7a185099094af',
+};
+const DEFAULT_TRIP_CODE = 'hanoi-sapa-2026';
+
+let syncDb = null;
+let syncUnsub = null;
+let syncPushTimer = null;
+let syncApplyingRemote = false;
+
+function getTripCode() {
+  const s = loadSettings();
+  return (s.tripCode || '').trim() || DEFAULT_TRIP_CODE;
+}
+
+function setSyncStatus(state) {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  el.className = 'sync-status ' + state;
+  el.title = state === 'synced' ? '동기화됨' : state === 'connecting' ? '동기화 연결 중' : '동기화 오류 (오프라인으로 계속 사용 가능)';
+}
+
+function initSync() {
+  if (!window.firebase) return;
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    syncDb = firebase.firestore();
+    attachSyncListener();
+  } catch (e) {
+    console.error('sync init failed', e);
+    setSyncStatus('error');
+  }
+}
+
+function attachSyncListener() {
+  if (!syncDb) return;
+  if (syncUnsub) { syncUnsub(); syncUnsub = null; }
+  setSyncStatus('connecting');
+  const ref = syncDb.collection('trips').doc(getTripCode());
+  syncUnsub = ref.onSnapshot((snap) => {
+    setSyncStatus('synced');
+    if (snap.metadata.hasPendingWrites || !snap.exists) return;
+    const data = snap.data();
+    syncApplyingRemote = true;
+    let changed = false;
+    if (data.itinerary !== undefined && JSON.stringify(data.itinerary) !== JSON.stringify(loadItinerary())) { saveItinerary(data.itinerary); changed = true; }
+    if (data.expenses !== undefined && JSON.stringify(data.expenses) !== JSON.stringify(loadExpenses())) { saveExpenses(data.expenses); changed = true; }
+    if (data.reference !== undefined && JSON.stringify(data.reference) !== JSON.stringify(loadReference())) { saveReference(data.reference); changed = true; }
+    if (data.otherVideos !== undefined && JSON.stringify(data.otherVideos) !== JSON.stringify(loadVideos())) { saveVideos(data.otherVideos); changed = true; }
+    syncApplyingRemote = false;
+    if (changed) {
+      renderItineraryGrid();
+      renderExpenseTab();
+      renderReferenceTab();
+      renderOtherTab();
+      toast('다른 기기의 변경사항을 동기화했어요');
+    }
+  }, (err) => {
+    console.error('sync listen error', err);
+    setSyncStatus('error');
+  });
+}
+
+function scheduleSyncPush() {
+  if (syncApplyingRemote || !syncDb) return;
+  clearTimeout(syncPushTimer);
+  syncPushTimer = setTimeout(() => {
+    syncDb.collection('trips').doc(getTripCode()).set({
+      itinerary: loadItinerary(),
+      expenses: loadExpenses(),
+      reference: loadReference(),
+      otherVideos: loadVideos(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true }).catch(e => { console.error('sync push failed', e); setSyncStatus('error'); });
+  }, 500);
+}
 
 function seedDefaultsIfEmpty() {
   if (!loadReference()) {
@@ -2059,6 +2151,7 @@ function openSettingsModal() {
   document.getElementById('settings-groq-model').value = (s.groqVisionModel && !DEPRECATED_GROQ_VISION_MODELS.includes(s.groqVisionModel)) ? s.groqVisionModel : '';
   document.getElementById('settings-translate-lang').value = s.translateSourceLang || '베트남어';
   document.getElementById('settings-google-client-id').value = s.googleClientId || '';
+  document.getElementById('settings-trip-code').value = s.tripCode || '';
   document.getElementById('settings-export-code').value = '';
   document.getElementById('settings-import-code').value = '';
   openModal('modal-settings');
@@ -2074,9 +2167,12 @@ document.getElementById('settings-save-btn').addEventListener('click', () => {
   s.groqVisionModel = document.getElementById('settings-groq-model').value.trim();
   s.translateSourceLang = document.getElementById('settings-translate-lang').value;
   s.googleClientId = document.getElementById('settings-google-client-id').value.trim();
+  const prevTripCode = getTripCode();
+  s.tripCode = document.getElementById('settings-trip-code').value.trim();
   saveSettings(s);
   renderItineraryGrid();
   renderExpenseTab();
+  if (getTripCode() !== prevTripCode) attachSyncListener();
   closeModal('modal-settings');
   toast('설정을 저장했습니다');
 });
@@ -2100,6 +2196,7 @@ document.getElementById('settings-export-btn').addEventListener('click', () => {
     groqVisionModel: document.getElementById('settings-groq-model').value.trim(),
     translateSourceLang: document.getElementById('settings-translate-lang').value,
     googleClientId: document.getElementById('settings-google-client-id').value.trim(),
+    tripCode: document.getElementById('settings-trip-code').value.trim(),
   };
   const code = toBase64Unicode(JSON.stringify(current));
   const ta = document.getElementById('settings-export-code');
@@ -2130,6 +2227,7 @@ document.getElementById('settings-import-btn').addEventListener('click', () => {
     toast('코드를 읽을 수 없습니다. 정확히 복사했는지 확인해주세요');
     return;
   }
+  const prevTripCode = getTripCode();
   const s = Object.assign(loadSettings(), parsed);
   saveSettings(s);
   document.getElementById('settings-start-date').value = s.startDate;
@@ -2138,9 +2236,11 @@ document.getElementById('settings-import-btn').addEventListener('click', () => {
   document.getElementById('settings-groq-model').value = (s.groqVisionModel && !DEPRECATED_GROQ_VISION_MODELS.includes(s.groqVisionModel)) ? s.groqVisionModel : '';
   document.getElementById('settings-translate-lang').value = s.translateSourceLang || '베트남어';
   document.getElementById('settings-google-client-id').value = s.googleClientId || '';
+  document.getElementById('settings-trip-code').value = s.tripCode || '';
   document.getElementById('settings-import-code').value = '';
   renderItineraryGrid();
   renderExpenseTab();
+  if (getTripCode() !== prevTripCode) attachSyncListener();
   toast('설정을 가져와서 바로 적용했습니다');
 });
 
@@ -2152,3 +2252,4 @@ renderExpenseTab();
 renderReferenceTab();
 renderPhrasesTab();
 renderOtherTab();
+initSync();

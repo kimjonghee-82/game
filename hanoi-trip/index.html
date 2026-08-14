@@ -4,14 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>하노이 · 사파 여행 플래너</title>
-<link rel="stylesheet" href="style.css?v=32">
+<link rel="stylesheet" href="style.css?v=33">
 </head>
 <body>
 
 <header id="app-header">
   <div class="header-top">
     <h1>여행 플래너</h1>
-    <button id="btn-settings" title="설정">⚙️</button>
+    <div class="header-actions">
+      <span id="sync-status" class="sync-status connecting" title="동기화 연결 중"></span>
+      <button id="btn-settings" title="설정">⚙️</button>
+    </div>
   </div>
   <nav id="tab-nav">
     <button class="tab-btn active" data-tab="itinerary">일정</button>
@@ -330,6 +333,10 @@
     <button id="btn-export-sheet" class="btn small">📊 지금 구글 시트로 내보내기</button>
   </div>
 
+  <h4>실시간 동기화 (트립 코드)</h4>
+  <p class="help-text">일정·비용·참고사항·기타(영상)를 다른 기기와 실시간으로 자동 동기화합니다. 아무것도 입력하지 않으면 기본 코드로 자동 연결되어 별도 설정 없이 PC/모바일 간 동기화됩니다. 우리끼리만 쓰고 싶다면 원하는 코드를 만들어서 모든 기기에 똑같이 입력하세요.</p>
+  <input type="text" id="settings-trip-code" placeholder="비워두면 기본 코드로 자동 동기화">
+
   <h4>다른 기기와 설정 공유</h4>
   <p class="help-text">API 키를 포함한 현재 설정을 코드로 만들어서, 다른 기기의 설정 화면에 붙여넣으면 그대로 복사됩니다. 이 코드 안에 API 키가 그대로 들어있으니 본인만 아는 안전한 곳(메모앱 등)에 보관하세요 — <b>깃허브에는 올라가지 않습니다.</b></p>
   <label>내보내기 코드
@@ -357,6 +364,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="app.js?v=32"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="app.js?v=33"></script>
 </body>
 </html>
