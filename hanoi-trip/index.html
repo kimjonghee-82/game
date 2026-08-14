@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="여행 플래너">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=44">
+<link rel="stylesheet" href="style.css?v=45">
 </head>
 <body>
 
@@ -66,6 +66,7 @@
 
   <!-- ================= 투어 정보 ================= -->
   <section id="tab-reference" class="tab-panel">
+    <div class="ref-group-tabs" id="ref-group-tabs"></div>
     <div class="region-tabs" id="region-tabs"></div>
     <ul class="ref-list" id="ref-list-active"></ul>
     <button id="btn-add-ref" class="fab-btn fab-center" title="투어 정보 추가">+</button>
@@ -286,7 +287,10 @@
 
   <input type="hidden" id="ref-id">
   <input type="hidden" id="ref-region-original">
-  <label>장소
+  <label id="ref-region-select-wrap" class="hidden">카테고리
+    <select id="ref-region-select"></select>
+  </label>
+  <label id="ref-region-input-wrap">장소
     <input type="text" id="ref-region-input" list="ref-region-list" placeholder="예: 하노이, 사파, 다낭...">
     <datalist id="ref-region-list"></datalist>
   </label>
@@ -432,6 +436,6 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script src="app.js?v=50"></script>
+<script src="app.js?v=51"></script>
 </body>
 </html>

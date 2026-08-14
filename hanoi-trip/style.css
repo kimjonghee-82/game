@@ -225,8 +225,11 @@ body{
 .tag{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;background:#f2f2f2;color:var(--muted)}
 
 /* ===== 참고사항 ===== */
-.region-tabs{display:flex;gap:6px;background:#fafafa;border:1px solid var(--line);border-radius:10px;padding:6px;margin-bottom:14px}
-.region-tab-btn{flex:1;background:transparent;border:none;padding:10px;border-radius:8px;font-size:14px;font-weight:bold;color:var(--muted);cursor:pointer;font-family:inherit}
+.ref-group-tabs{display:flex;gap:8px;margin-bottom:10px}
+.ref-group-btn{flex:1;background:#fafafa;border:1px solid var(--line);padding:11px;border-radius:10px;font-size:14.5px;font-weight:bold;color:var(--muted);cursor:pointer;font-family:inherit}
+.ref-group-btn.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+.region-tabs{display:flex;gap:6px;background:#fafafa;border:1px solid var(--line);border-radius:10px;padding:6px;margin-bottom:14px;overflow-x:auto}
+.region-tab-btn{flex:0 0 auto;white-space:nowrap;background:transparent;border:none;padding:10px 14px;border-radius:8px;font-size:14px;font-weight:bold;color:var(--muted);cursor:pointer;font-family:inherit}
 .region-tab-btn.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .region-tab-add-btn{
   flex:0 0 auto;width:38px;background:transparent;border:none;border-radius:8px;

@@ -260,8 +260,11 @@ function saveExpenses(v) { save(STORAGE_KEYS.expenses, v); }
 /** 예전 데이터엔 위시리스트 지역이 없었으므로, 없으면 빈 배열로 자동 추가 */
 function loadReference() {
   const v = load(STORAGE_KEYS.reference, null);
-  if (v && !('wishlist' in v)) {
-    v.wishlist = [];
+  // 이전 버전엔 위시리스트가 카테고리 구분 없이 하나의 배열이었음. 그 데이터를 잃지 않도록
+  // 새 "기타" 카테고리로 자동 이관.
+  if (v && Array.isArray(v.wishlist)) {
+    v.wish_etc = [...(v.wish_etc || []), ...v.wishlist];
+    delete v.wishlist;
     save(STORAGE_KEYS.reference, v);
   }
   return v;
@@ -637,7 +640,6 @@ document.getElementById('doc-viewer-delete-btn').addEventListener('click', (e) =
 function seedDefaultsIfEmpty() {
   if (!loadReference()) {
     saveReference({
-      wishlist: [],
       hanoi: DEFAULT_REFERENCE.hanoi.map(item => ({ id: uid(), ...item })),
       sapa: DEFAULT_REFERENCE.sapa.map(item => ({ id: uid(), ...item })),
     });
@@ -1191,16 +1193,30 @@ async function refreshExpenseKrw(expenseId, forceRerender) {
 
 /* ============================== 투어 정보 탭 ============================== */
 
-const REGION_LABELS = { wishlist: '위시리스트', hanoi: '하노이', sapa: '사파' };
+/** 위시리스트 안의 고정 음식 카테고리(순서 고정). 명소(하노이/사파)와 달리 사용자가 임의로 늘릴 수 없음. */
+const REF_WISHLIST_CATEGORIES = [
+  { key: 'wish_hanoi_food', label: '하노이 대표 음식' },
+  { key: 'wish_sapa_food', label: '사파 추천 음식' },
+  { key: 'wish_snacks', label: '간식 & 길거리 음식' },
+  { key: 'wish_fruits', label: '열대 과일' },
+  { key: 'wish_drinks', label: '커피 & 음료' },
+  { key: 'wish_alcohol', label: '맥주 & 술' },
+  { key: 'wish_tips', label: '식사 팁' },
+  { key: 'wish_howto', label: '즐기는 방법' },
+  { key: 'wish_areas', label: '추천 맛집 지역' },
+  { key: 'wish_etc', label: '기타' },
+];
+const REGION_LABELS = Object.assign(
+  { hanoi: '하노이', sapa: '사파' },
+  Object.fromEntries(REF_WISHLIST_CATEGORIES.map(c => [c.key, c.label]))
+);
 function regionLabel(key) { return REGION_LABELS[key] || key; }
 function regionKeyForLabel(label) {
   const found = Object.keys(REGION_LABELS).find(k => REGION_LABELS[k] === label);
   return found || label;
 }
 
-let refRegion = 'hanoi';
-
-/** 하노이/사파를 앞에 두고 그 외 커스텀 장소는 뒤에 붙이는 공통 정렬 규칙 */
+/** 하노이/사파를 앞에 두고 그 외 커스텀 장소는 뒤에 붙이는 공통 정렬 규칙 (기타 탭 영상 등에서도 사용) */
 function orderedRegionKeys(dataObj) {
   const keys = Object.keys(dataObj);
   const ordered = ['hanoi', 'sapa'].filter(k => keys.includes(k));
@@ -1208,16 +1224,31 @@ function orderedRegionKeys(dataObj) {
   return [...ordered, ...extra];
 }
 
-/** 투어 정보(투어 정보)은 위시리스트를 맨 앞에 두고 그 뒤로 하노이/사파, 그 외 커스텀 장소 순서 */
-function orderedReferenceRegionKeys(dataObj) {
-  const keys = Object.keys(dataObj);
-  const ordered = ['wishlist', 'hanoi', 'sapa'].filter(k => keys.includes(k));
-  const extra = keys.filter(k => !['wishlist', 'hanoi', 'sapa'].includes(k));
-  return [...ordered, ...extra];
+let refGroup = 'spots'; // 'wishlist' | 'spots'
+let refRegion = 'hanoi';
+
+function getWishlistRegionKeys() { return REF_WISHLIST_CATEGORIES.map(c => c.key); }
+/** 명소는 하노이/사파를 기본으로 하되, "장소" 필드로 직접 입력한 커스텀 도시도 뒤에 붙음 */
+function getSpotRegionKeys() {
+  const keys = Object.keys(loadReference()).filter(k => !k.startsWith('wish_'));
+  return orderedRegionKeys(Object.fromEntries(keys.map(k => [k, true])));
 }
 function getRegionKeys() {
-  return orderedReferenceRegionKeys(loadReference());
+  return refGroup === 'wishlist' ? getWishlistRegionKeys() : getSpotRegionKeys();
 }
+
+function renderRefGroupTabs() {
+  document.getElementById('ref-group-tabs').innerHTML = `
+    <button type="button" class="ref-group-btn${refGroup === 'wishlist' ? ' active' : ''}" data-group="wishlist">위시리스트</button>
+    <button type="button" class="ref-group-btn${refGroup === 'spots' ? ' active' : ''}" data-group="spots">명소</button>`;
+}
+document.getElementById('ref-group-tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.ref-group-btn');
+  if (!btn || btn.dataset.group === refGroup) return;
+  refGroup = btn.dataset.group;
+  refRegion = getRegionKeys()[0];
+  renderReferenceTab();
+});
 
 function renderRegionTabs() {
   const keys = getRegionKeys();
@@ -1228,10 +1259,11 @@ function renderRegionTabs() {
 }
 
 function renderReferenceTab() {
+  renderRefGroupTabs();
   renderRegionTabs();
   const ref = loadReference();
   const items = ref[refRegion] || [];
-  const isWishlist = refRegion === 'wishlist';
+  const isWishlist = refGroup === 'wishlist';
   const list = document.getElementById('ref-list-active');
   list.innerHTML = items.map(item => `
     <li class="ref-item${item.done ? ' done' : ''}" data-id="${item.id}">
@@ -1329,15 +1361,24 @@ function openRefModal(region, itemId) {
   document.getElementById('ref-delete-btn').classList.toggle('hidden', !itemId);
   document.getElementById('ref-photo-status').textContent = '';
 
-  document.getElementById('ref-region-list').innerHTML =
-    getRegionKeys().map(k => `<option value="${escapeHtml(regionLabel(k))}">`).join('');
+  const isWishlist = REF_WISHLIST_CATEGORIES.some(c => c.key === region);
+  document.getElementById('ref-region-select-wrap').classList.toggle('hidden', !isWishlist);
+  document.getElementById('ref-region-input-wrap').classList.toggle('hidden', isWishlist);
+  if (isWishlist) {
+    document.getElementById('ref-region-select').innerHTML =
+      REF_WISHLIST_CATEGORIES.map(c => `<option value="${c.key}">${escapeHtml(c.label)}</option>`).join('');
+    document.getElementById('ref-region-select').value = region;
+  } else {
+    document.getElementById('ref-region-list').innerHTML =
+      getSpotRegionKeys().map(k => `<option value="${escapeHtml(regionLabel(k))}">`).join('');
+    document.getElementById('ref-region-input').value = regionLabel(region);
+  }
 
   let item = { type: '맛집', name: '', desc: '', mapUrl: '', website: '' };
   if (itemId) {
     const ref = loadReference();
     item = { ...item, ...((ref[region] || []).find(x => x.id === itemId) || {}) };
   }
-  document.getElementById('ref-region-input').value = regionLabel(region);
   if (REF_KNOWN_TYPES.includes(item.type)) {
     document.getElementById('ref-type').value = item.type;
     document.getElementById('ref-type-custom').value = '';
@@ -1367,9 +1408,15 @@ document.getElementById('ref-map-open-btn').addEventListener('click', () => {
 document.getElementById('ref-save-btn').addEventListener('click', () => {
   const id = document.getElementById('ref-id').value;
   const originalRegion = document.getElementById('ref-region-original').value;
-  const regionLabelInput = document.getElementById('ref-region-input').value.trim();
-  if (!regionLabelInput) { toast('장소를 입력해주세요'); return; }
-  const region = regionKeyForLabel(regionLabelInput);
+  const isWishlistField = !document.getElementById('ref-region-select-wrap').classList.contains('hidden');
+  let region;
+  if (isWishlistField) {
+    region = document.getElementById('ref-region-select').value;
+  } else {
+    const regionLabelInput = document.getElementById('ref-region-input').value.trim();
+    if (!regionLabelInput) { toast('장소를 입력해주세요'); return; }
+    region = regionKeyForLabel(regionLabelInput);
+  }
   const typeSelect = document.getElementById('ref-type').value;
   const type = typeSelect === '__custom__' ? (document.getElementById('ref-type-custom').value.trim() || '기타') : typeSelect;
   const name = document.getElementById('ref-name').value.trim();
