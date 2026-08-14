@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>하노이 · 사파 여행 플래너</title>
-<link rel="stylesheet" href="style.css?v=29">
+<link rel="stylesheet" href="style.css?v=30">
 </head>
 <body>
 
@@ -73,7 +73,7 @@
 
   <!-- ================= 기타 ================= -->
   <section id="tab-other" class="tab-panel">
-    <p class="help-text" style="padding:0 2px 10px">유튜브 링크는 채널이 설정한 광고가 그대로 노출될 수 있습니다(임베드로는 광고를 없앨 수 없어요). 광고 없이 보려면 구글 드라이브에 영상을 올린 뒤 "링크가 있는 모든 사용자"로 공유 설정하고 그 링크를 입력하거나, mp4/webm 파일 링크를 입력하세요.</p>
+    <div class="region-tabs" id="video-region-tabs"></div>
     <div id="other-video-list" class="other-video-list"></div>
     <button id="btn-add-video" class="fab-btn fab-center" title="영상 추가">+</button>
   </section>
@@ -261,6 +261,11 @@
     <h3 id="video-modal-title">영상 추가</h3>
   </div>
   <input type="hidden" id="video-id">
+  <input type="hidden" id="video-region-original">
+  <label>장소
+    <input type="text" id="video-region-input" list="video-region-list" placeholder="예: 하노이, 사파, 다낭...">
+    <datalist id="video-region-list"></datalist>
+  </label>
   <label>제목 <input type="text" id="video-title" placeholder="예: 하노이 여행 브이로그"></label>
   <label>영상 링크
     <input type="text" id="video-url" placeholder="유튜브 / 구글 드라이브 / mp4·webm 링크">
@@ -353,6 +358,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="app.js?v=29"></script>
+<script src="app.js?v=30"></script>
 </body>
 </html>

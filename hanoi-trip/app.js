@@ -252,7 +252,16 @@ function loadPhrases() { return load(STORAGE_KEYS.phrases, null); }
 function savePhrases(v) { save(STORAGE_KEYS.phrases, v); }
 function loadFxCache() { return load(STORAGE_KEYS.fxCache, {}); }
 function saveFxCache(v) { save(STORAGE_KEYS.fxCache, v); }
-function loadVideos() { return load(STORAGE_KEYS.otherVideos, []); }
+/** 예전엔 영상이 평평한 배열로 저장됐음. 장소별 객체로 자동 이관해서 기존 영상을 잃지 않도록 함. */
+function loadVideos() {
+  const v = load(STORAGE_KEYS.otherVideos, null);
+  if (Array.isArray(v)) {
+    const migrated = { hanoi: v, sapa: [] };
+    save(STORAGE_KEYS.otherVideos, migrated);
+    return migrated;
+  }
+  return v || { hanoi: [], sapa: [] };
+}
 function saveVideos(v) { save(STORAGE_KEYS.otherVideos, v); }
 function loadTranslations() { return load(STORAGE_KEYS.translations, []); }
 function saveTranslations(v) { save(STORAGE_KEYS.translations, v); }
@@ -824,12 +833,16 @@ function regionKeyForLabel(label) {
 
 let refRegion = 'hanoi';
 
-function getRegionKeys() {
-  const ref = loadReference();
-  const keys = Object.keys(ref);
+/** 하노이/사파를 앞에 두고 그 외 커스텀 장소는 뒤에 붙이는 공통 정렬 규칙 */
+function orderedRegionKeys(dataObj) {
+  const keys = Object.keys(dataObj);
   const ordered = ['hanoi', 'sapa'].filter(k => keys.includes(k));
   const extra = keys.filter(k => k !== 'hanoi' && k !== 'sapa');
   return [...ordered, ...extra];
+}
+
+function getRegionKeys() {
+  return orderedRegionKeys(loadReference());
 }
 
 function renderRegionTabs() {
@@ -1055,11 +1068,27 @@ function parseVideoEmbed(url) {
   return null;
 }
 
+let videoRegion = 'hanoi';
+
+function getVideoRegionKeys() {
+  return orderedRegionKeys(loadVideos());
+}
+
+function renderVideoRegionTabs() {
+  const keys = getVideoRegionKeys();
+  if (!keys.includes(videoRegion)) videoRegion = keys[0] || 'hanoi';
+  document.getElementById('video-region-tabs').innerHTML =
+    keys.map(k => `<button class="region-tab-btn${k === videoRegion ? ' active' : ''}" data-region="${k}">${escapeHtml(regionLabel(k))}</button>`).join('')
+    + `<button type="button" class="region-tab-add-btn" id="btn-add-video-region" title="장소 추가">+</button>`;
+}
+
 function renderOtherTab() {
+  renderVideoRegionTabs();
   const videos = loadVideos();
+  const items = videos[videoRegion] || [];
   const list = document.getElementById('other-video-list');
-  list.innerHTML = videos.length
-    ? videos.map(v => {
+  list.innerHTML = items.length
+    ? items.map(v => {
       const embed = parseVideoEmbed(v.url);
       let embedHtml;
       if (embed && embed.type === 'file') {
@@ -1085,9 +1114,39 @@ function renderOtherTab() {
     : '<div class="exp-empty">아래 버튼으로 영상을 추가해보세요</div>';
 }
 
+document.getElementById('video-region-tabs').addEventListener('click', (e) => {
+  const addBtn = e.target.closest('#btn-add-video-region');
+  if (addBtn) {
+    const name = prompt('새 장소(대주제) 이름을 입력하세요');
+    if (!name || !name.trim()) return;
+    const key = regionKeyForLabel(name.trim());
+    const videos = loadVideos();
+    if (!videos[key]) { videos[key] = []; saveVideos(videos); }
+    videoRegion = key;
+    renderOtherTab();
+    return;
+  }
+  const btn = e.target.closest('.region-tab-btn');
+  if (!btn) return;
+  videoRegion = btn.dataset.region;
+  renderOtherTab();
+});
+
+/** 하노이/사파(및 추가된 장소) 사이를 화면 스와이프로 이동 */
+function goToAdjacentVideoRegion(delta) {
+  const keys = getVideoRegionKeys();
+  const idx = keys.indexOf(videoRegion);
+  const nextIdx = idx + delta;
+  if (nextIdx < 0 || nextIdx >= keys.length) return;
+  videoRegion = keys[nextIdx];
+  renderOtherTab();
+  playSwipeAnim(document.getElementById('other-video-list'), delta);
+}
+attachSwipeNav(document.getElementById('tab-other'), goToAdjacentVideoRegion);
+
 document.getElementById('other-video-list').addEventListener('click', (e) => {
   const btn = e.target.closest('.video-edit-btn');
-  if (btn) { openVideoModal(btn.dataset.id); return; }
+  if (btn) { openVideoModal(videoRegion, btn.dataset.id); return; }
   const thumb = e.target.closest('.video-thumb');
   if (thumb) {
     const id = thumb.dataset.ytId;
@@ -1095,17 +1154,22 @@ document.getElementById('other-video-list').addEventListener('click', (e) => {
     thumb.outerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1" title="${title}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
   }
 });
-document.getElementById('btn-add-video').addEventListener('click', () => openVideoModal(null));
+document.getElementById('btn-add-video').addEventListener('click', () => openVideoModal(videoRegion, null));
 
-function openVideoModal(videoId) {
+function openVideoModal(region, videoId) {
   const isNew = !videoId;
   document.getElementById('video-modal-title').textContent = isNew ? '영상 추가' : '영상 수정';
   document.getElementById('video-id').value = videoId || '';
+  document.getElementById('video-region-original').value = region;
   document.getElementById('video-delete-btn').classList.toggle('hidden', isNew);
 
-  let v = { title: '', url: '' };
-  if (!isNew) v = loadVideos().find(x => x.id === videoId) || v;
+  document.getElementById('video-region-list').innerHTML =
+    getVideoRegionKeys().map(k => `<option value="${escapeHtml(regionLabel(k))}">`).join('');
 
+  let v = { title: '', url: '' };
+  if (!isNew) v = (loadVideos()[region] || []).find(x => x.id === videoId) || v;
+
+  document.getElementById('video-region-input').value = regionLabel(region);
   document.getElementById('video-title').value = v.title || '';
   document.getElementById('video-url').value = v.url || '';
   openModal('modal-video');
@@ -1115,16 +1179,25 @@ document.getElementById('video-cancel-btn').addEventListener('click', () => clos
 
 document.getElementById('video-save-btn').addEventListener('click', () => {
   const id = document.getElementById('video-id').value;
+  const originalRegion = document.getElementById('video-region-original').value;
+  const regionLabelInput = document.getElementById('video-region-input').value.trim();
+  if (!regionLabelInput) { toast('장소를 입력해주세요'); return; }
+  const region = regionKeyForLabel(regionLabelInput);
   const title = document.getElementById('video-title').value.trim();
   const url = document.getElementById('video-url').value.trim();
   if (!url) { toast('영상 링크를 입력해주세요'); return; }
   if (!parseVideoEmbed(url)) { toast('유튜브 링크 또는 mp4/webm 파일 링크를 입력해주세요'); return; }
 
   const videos = loadVideos();
-  let v = videos.find(x => x.id === id);
-  if (!v) { v = { id: uid() }; videos.push(v); }
+  if (id && originalRegion && originalRegion !== region) {
+    videos[originalRegion] = (videos[originalRegion] || []).filter(x => x.id !== id);
+  }
+  videos[region] = videos[region] || [];
+  let v = videos[region].find(x => x.id === id);
+  if (!v) { v = { id: uid() }; videos[region].push(v); }
   Object.assign(v, { title, url });
   saveVideos(videos);
+  videoRegion = region;
   renderOtherTab();
   closeModal('modal-video');
   toast('영상을 저장했습니다');
@@ -1132,7 +1205,10 @@ document.getElementById('video-save-btn').addEventListener('click', () => {
 
 document.getElementById('video-delete-btn').addEventListener('click', () => {
   const id = document.getElementById('video-id').value;
-  saveVideos(loadVideos().filter(x => x.id !== id));
+  const region = document.getElementById('video-region-original').value;
+  const videos = loadVideos();
+  videos[region] = (videos[region] || []).filter(x => x.id !== id);
+  saveVideos(videos);
   renderOtherTab();
   closeModal('modal-video');
   toast('영상을 삭제했습니다');

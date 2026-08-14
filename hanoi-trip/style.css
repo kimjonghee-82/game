@@ -179,6 +179,11 @@ body{
 .region-tabs{display:flex;gap:6px;background:#fafafa;border:1px solid var(--line);border-radius:10px;padding:6px;margin-bottom:14px}
 .region-tab-btn{flex:1;background:transparent;border:none;padding:10px;border-radius:8px;font-size:14px;font-weight:bold;color:var(--muted);cursor:pointer;font-family:inherit}
 .region-tab-btn.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.region-tab-add-btn{
+  flex:0 0 auto;width:38px;background:transparent;border:none;border-radius:8px;
+  font-size:18px;font-weight:bold;color:var(--muted);cursor:pointer;font-family:inherit;
+}
+.region-tab-add-btn:active{background:#fff}
 .ref-list{list-style:none;padding:0 0 84px;margin:0;display:flex;flex-direction:column;gap:8px;touch-action:pan-y;flex:1 1 auto}
 .ref-item{border:1px solid var(--line);border-radius:8px;padding:8px 6px 8px 10px;cursor:pointer}
 .ref-item:hover{background:#fafafa}
