@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="여행 플래너">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=39">
+<link rel="stylesheet" href="style.css?v=40">
 </head>
 <body>
 
@@ -143,15 +143,37 @@
     <h3>자료함</h3>
     <button id="doc-drawer-close-btn" type="button" class="icon-btn" title="닫기">✕</button>
   </div>
-  <p class="help-text">바우처·여권 사진 등 PDF/이미지를 올려두면 모든 기기에서 바로 보고 다운로드할 수 있어요.</p>
+  <p class="help-text">바우처·여권 사진 등 PDF/이미지를 구글 드라이브에 올린 뒤 공유 링크를 붙여넣으면, 모든 기기에서 바로 보고 다운로드할 수 있어요.</p>
   <div id="doc-list" class="doc-list"></div>
-  <input type="file" id="doc-upload-input" accept="application/pdf,image/*" class="hidden">
   <button id="btn-doc-upload" type="button" class="btn primary doc-upload-btn">+ 자료 추가</button>
 </div>
 
 <!-- ============ 모달들 ============ -->
 
 <div id="modal-backdrop" class="modal-backdrop hidden"></div>
+
+<!-- 자료함에 링크 추가 -->
+<div id="modal-doc-add" class="modal hidden">
+  <div class="modal-title-row">
+    <h3>자료 추가</h3>
+  </div>
+  <label>이름 <input type="text" id="doc-add-name" placeholder="예: 여권 사본, 호텔 바우처"></label>
+  <label>링크
+    <input type="text" id="doc-add-link" placeholder="구글 드라이브 공유 링크 또는 PDF·이미지 직링크">
+  </label>
+  <p class="help-text" style="margin-top:-6px">구글 드라이브에 파일을 올린 뒤 "링크가 있는 모든 사용자"로 공유한 링크를 붙여넣으세요.</p>
+  <label>종류
+    <select id="doc-add-kind">
+      <option value="pdf">PDF/문서</option>
+      <option value="photo">사진</option>
+    </select>
+  </label>
+  <div class="modal-actions">
+    <div class="spacer"></div>
+    <button id="doc-add-cancel-btn" class="btn ghost">취소</button>
+    <button id="doc-add-save-btn" class="btn primary">저장</button>
+  </div>
+</div>
 
 <!-- 자료함 보기 -->
 <div id="modal-doc-viewer" class="modal doc-viewer-modal hidden">
@@ -411,7 +433,6 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-storage-compat.js"></script>
-<script src="app.js?v=39"></script>
+<script src="app.js?v=41"></script>
 </body>
 </html>

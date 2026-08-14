@@ -371,13 +371,15 @@ function scheduleSyncPush() {
   syncPushTimer = setTimeout(pushSyncNow, 500);
 }
 
-/* ============================== 자료함 (바우처·여권 등 PDF/사진, Firebase Storage) ============================== */
+/* ============================== 자료함 (바우처·여권 등 PDF/사진, 구글 드라이브 링크) ============================== */
 
-function formatBytes(n) {
-  if (!n && n !== 0) return '';
-  if (n < 1024) return n + 'B';
-  if (n < 1024 * 1024) return Math.round(n / 1024) + 'KB';
-  return (n / (1024 * 1024)).toFixed(1) + 'MB';
+function parseDocLink(url) {
+  const u = (url || '').trim();
+  if (!u) return null;
+  const gd = /drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?id=)([a-zA-Z0-9_-]+)/.exec(u);
+  if (gd) return { type: 'gdrive', id: gd[1] };
+  if (/^https?:\/\//i.test(u)) return { type: 'file', src: u };
+  return null;
 }
 
 function renderDocDrawer() {
@@ -386,10 +388,10 @@ function renderDocDrawer() {
   list.innerHTML = docs.length
     ? docs.map(d => `
       <div class="doc-item" data-id="${d.id}">
-        <div class="doc-icon">${d.type === 'application/pdf' ? '📄' : '🖼️'}</div>
+        <div class="doc-icon">${d.kind === 'photo' ? '🖼️' : '📄'}</div>
         <div class="doc-info">
           <div class="doc-name">${escapeHtml(d.name)}</div>
-          <div class="doc-meta">${formatBytes(d.size)}</div>
+          <div class="doc-meta">${d.kind === 'photo' ? '사진' : 'PDF/문서'}</div>
         </div>
       </div>`).join('')
     : '<div class="exp-empty">아래 버튼으로 자료를 추가해보세요</div>';
@@ -407,37 +409,29 @@ document.getElementById('doc-drawer-tab').addEventListener('click', openDocDrawe
 document.getElementById('doc-drawer-close-btn').addEventListener('click', closeDocDrawer);
 document.getElementById('doc-drawer-backdrop').addEventListener('click', closeDocDrawer);
 
-function uploadDocument(file) {
-  if (!window.firebase || !firebase.apps || !firebase.apps.length || !firebase.storage) {
-    toast('저장소 연결에 실패했습니다. 잠시 후 다시 시도해주세요');
-    return;
-  }
-  const docId = uid();
-  const path = `trips/${getTripCode()}/docs/${docId}-${file.name}`;
-  const ref = firebase.storage().ref(path);
-  toast('업로드 중...');
-  ref.put(file)
-    .then((snap) => snap.ref.getDownloadURL())
-    .then((url) => {
-      const docs = loadDocuments();
-      docs.push({ id: docId, name: file.name, type: file.type, size: file.size, url, path, uploadedAt: Date.now() });
-      saveDocuments(docs);
-      renderDocDrawer();
-      toast('업로드했습니다');
-    })
-    .catch((e) => {
-      console.error('doc upload failed', e);
-      toast('업로드에 실패했습니다. Storage 설정을 확인해주세요');
-    });
-}
+document.getElementById('btn-doc-upload').addEventListener('click', () => {
+  document.getElementById('doc-add-name').value = '';
+  document.getElementById('doc-add-link').value = '';
+  document.getElementById('doc-add-kind').value = 'pdf';
+  openModal('modal-doc-add');
+});
+document.getElementById('doc-add-cancel-btn').addEventListener('click', () => closeModal('modal-doc-add'));
+document.getElementById('doc-add-save-btn').addEventListener('click', () => {
+  const name = document.getElementById('doc-add-name').value.trim();
+  const link = document.getElementById('doc-add-link').value.trim();
+  const kind = document.getElementById('doc-add-kind').value;
+  if (!name) { toast('이름을 입력해주세요'); return; }
+  if (!parseDocLink(link)) { toast('올바른 링크를 입력해주세요'); return; }
+  const docs = loadDocuments();
+  docs.push({ id: uid(), name, url: link, kind, addedAt: Date.now() });
+  saveDocuments(docs);
+  renderDocDrawer();
+  closeModal('modal-doc-add');
+  toast('자료를 추가했습니다');
+});
 
 function deleteDocument(id) {
   const docs = loadDocuments();
-  const d = docs.find((x) => x.id === id);
-  if (!d) return;
-  if (d.path && window.firebase && firebase.storage) {
-    firebase.storage().ref(d.path).delete().catch(() => {});
-  }
   saveDocuments(docs.filter((x) => x.id !== id));
   renderDocDrawer();
 }
@@ -447,12 +441,21 @@ function openDocViewer(id) {
   if (!d) return;
   document.getElementById('doc-viewer-title').textContent = d.name;
   const body = document.getElementById('doc-viewer-body');
-  body.innerHTML = d.type === 'application/pdf'
-    ? `<iframe src="${escapeHtml(d.url)}" title="${escapeHtml(d.name)}"></iframe>`
-    : `<img src="${escapeHtml(d.url)}" alt="${escapeHtml(d.name)}">`;
+  const parsed = parseDocLink(d.url);
   const dl = document.getElementById('doc-viewer-download-btn');
-  dl.href = d.url;
-  dl.setAttribute('download', d.name);
+  if (parsed && parsed.type === 'gdrive') {
+    body.innerHTML = `<iframe src="https://drive.google.com/file/d/${parsed.id}/preview" title="${escapeHtml(d.name)}" allow="autoplay"></iframe>`;
+    dl.href = `https://drive.google.com/file/d/${parsed.id}/view`;
+    dl.removeAttribute('download');
+    dl.textContent = '구글 드라이브에서 열기';
+  } else {
+    body.innerHTML = d.kind === 'photo'
+      ? `<img src="${escapeHtml(d.url)}" alt="${escapeHtml(d.name)}">`
+      : `<iframe src="${escapeHtml(d.url)}" title="${escapeHtml(d.name)}"></iframe>`;
+    dl.href = d.url;
+    dl.setAttribute('download', d.name);
+    dl.textContent = '다운로드';
+  }
   document.getElementById('doc-viewer-delete-btn').dataset.id = id;
   openModal('modal-doc-viewer');
 }
@@ -460,14 +463,6 @@ function openDocViewer(id) {
 document.getElementById('doc-list').addEventListener('click', (e) => {
   const item = e.target.closest('.doc-item');
   if (item) openDocViewer(item.dataset.id);
-});
-document.getElementById('btn-doc-upload').addEventListener('click', () => {
-  document.getElementById('doc-upload-input').click();
-});
-document.getElementById('doc-upload-input').addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (file) uploadDocument(file);
 });
 document.getElementById('doc-viewer-close-btn').addEventListener('click', () => closeModal('modal-doc-viewer'));
 document.getElementById('doc-viewer-delete-btn').addEventListener('click', (e) => {
