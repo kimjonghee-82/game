@@ -64,6 +64,99 @@ const DEFAULT_REFERENCE = {
   ],
 };
 
+/** 위시리스트 카테고리별 기본 항목("하노이·사파에서 꼭 먹어봐야 할 음식" 정리표 기준) */
+const DEFAULT_WISHLIST = {
+  wish_hanoi_food: [
+    { type: '음식', name: '분짜 (Bún chả)', desc: '숯불에 구운 돼지고기와 새콤달콤한 느억맘 소스에 국수를 찍어 먹는 하노이 대표 요리. 추천: 분짜 닥킴, 꾸안안응온' },
+    { type: '음식', name: '쌀국수 (Phở)', desc: '깊고 진한 육수와 부드러운 고기, 향긋한 허브가 어우러진 베트남 대표 쌀국수. 추천: 퍼틴, 퍼자' },
+    { type: '음식', name: '반미 (Bánh mì)', desc: '바삭한 바게트에 고기·채소·소스가 듬뿍 들어간 베트남식 샌드위치. 추천: 반미25, 반미포홍' },
+    { type: '음식', name: '반쎄오 (Bánh xèo)', desc: '쌀가루 반죽에 새우·돼지고기·숙주를 넣어 바삭하게 부친 베트남식 부침개. 추천: 반쎄오46A' },
+    { type: '음식', name: '넴느엉 (Nem nướng)', desc: '숯불에 구운 돼지고기 완자구이. 채소·라이스페이퍼와 함께 싸먹는 인기 메뉴. 추천: 넴느엉 항동' },
+    { type: '음식', name: '짜조 (Chả giò)', desc: '바삭하게 튀긴 베트남식 스프링롤. 속이 알차고 누구나 좋아하는 맛. 추천: 짜조 끼시에우' },
+    { type: '음식', name: '분더우맘톰 (Bún đậu mắm tôm)', desc: '두부·돼지고기·쌀국수를 새우젓 소스에 찍어 먹는 음식. 호불호가 있을 수 있어요' },
+    { type: '음식', name: '껌짱 / 볶음밥 (Cơm rang)', desc: '베트남식 볶음밥! 새우·닭고기·소고기 등 다양하게 즐길 수 있어요' },
+    { type: '음식', name: '라우 / 전골 (Lẩu)', desc: '신선한 재료를 육수에 넣어 익혀 먹는 전골 요리 (소고기·해산물·채소 등)' },
+    { type: '음식', name: '해산물 요리', desc: '새우·게·조개·오징어 등 신선한 해산물을 구이·찜·볶음으로 다양하게 즐기기' },
+  ],
+  wish_sapa_food: [
+    { type: '음식', name: '연어 / 철갑상어 요리', desc: '전골·구이·찜·샐러드 등 신선하고 담백한 사파 대표 음식' },
+    { type: '음식', name: '숯불 삼겹살 / 목살 구이', desc: '두툼한 고기를 숯불에 구워 채소·쌈장과 함께 먹는 현지 인기 메뉴' },
+    { type: '음식', name: '흑닭 요리', desc: '쫄깃한 흑닭으로 만든 백숙·구이·전골 등 영양가 높은 사파 보양식' },
+    { type: '음식', name: '대나무 찹쌀밥 (Cơm lam)', desc: '대나무 안에 찹쌀·콩·코코넛 밀크를 넣어 구운 사파 전통 음식. 향긋하고 고소해요' },
+    { type: '음식', name: '산나물 볶음', desc: '사파의 신선한 산나물을 마늘과 함께 볶아 담백하고 건강한 맛' },
+    { type: '음식', name: '버섯 요리', desc: '사파는 버섯이 유명해요! 볶음·전골·구이 등으로 다양하게 즐기기' },
+    { type: '음식', name: '옥수수 구이', desc: '달콤하고 고소한 옥수수, 밤 간식으로 최고!' },
+    { type: '음식', name: '오색 찹쌀밥 (Xôi ngũ sắc)', desc: '천연 재료로 색을 낸 예쁘고 건강한 사파 음식' },
+    { type: '음식', name: '숯불 꼬치 구이', desc: '돼지고기·소고기·닭고기 등 다양한 꼬치구이! 야시장에서 부담 없이 즐기세요' },
+    { type: '음식', name: '훈제 물소고기 (Trâu gác bếp)', desc: '훈제해 말린 물소고기 육포! 쫄깃하고 짭짤한 술안주, 간식으로 인기' },
+    { type: '음식', name: '밤 요리', desc: '사파 밤은 달콤해요! 구워 먹거나 간식으로' },
+    { type: '음식', name: '사과주 / 옥수수주', desc: '타오에오주, 옥수수주 등 사파에서만 맛볼 수 있는 특산 술' },
+  ],
+  wish_snacks: [
+    { type: '간식', name: '반짱느엉 (Bánh tráng nướng)', desc: '베트남식 라이스페이퍼 피자! 돼지고기 등을 얹어 구운 길거리 간식' },
+    { type: '간식', name: '반꾸온 (Bánh cuốn)', desc: '얇은 쌀떡피에 고기·목이버섯 등을 말아 만든 요리' },
+    { type: '간식', name: '반깐 (Bánh căn)', desc: '작은 팬케이크! 다양한 재료를 넣어 만드는 길거리 간식' },
+    { type: '간식', name: '짜까 (Chả cá)', desc: '생선을 향신료와 함께 구운 하노이 명물 길거리 간식' },
+    { type: '간식', name: '코코넛 아이스크림', desc: '시원하고 달콤한 베트남 대표 디저트' },
+    { type: '간식', name: '베트남식 요거트 (Sữa chua)', desc: '달콤하고 진한 현지 요거트' },
+    { type: '간식', name: '계란빵 (Bánh trứng)', desc: '폭신하고 달콤한 베트남식 에그타르트/계란빵' },
+  ],
+  wish_fruits: [
+    { type: '과일', name: '망고 (Xoài)', desc: '' },
+    { type: '과일', name: '용과 (Thanh long)', desc: '' },
+    { type: '과일', name: '수박 (Dưa hấu)', desc: '' },
+    { type: '과일', name: '패션프루트 (Chanh leo)', desc: '' },
+    { type: '과일', name: '망고스틴 (Măng cụt)', desc: '' },
+    { type: '과일', name: '두리안 (Sầu riêng)', desc: '' },
+    { type: '과일', name: '리치 (Vải)', desc: '' },
+    { type: '과일', name: '롱안 (Nhãn)', desc: '' },
+    { type: '과일', name: '람부탄 (Chôm chôm)', desc: '' },
+    { type: '과일', name: '구아바 (Ổi)', desc: '' },
+  ],
+  wish_drinks: [
+    { type: '음료', name: '에그커피 (Cà phê trứng)', desc: '달콤한 계란 크림이 올라간 하노이 명물 커피' },
+    { type: '음료', name: '코코넛커피 (Cà phê dừa)', desc: '코코넛 아이스크림처럼 진한 커피' },
+    { type: '음료', name: '연유커피 (Cà phê sữa đá)', desc: '연유의 달콤함이 가득한 베트남 대표 커피' },
+    { type: '음료', name: '블랙커피 (Cà phê đen/nóng đá)', desc: '진하고 깊은 향의 베트남 로컬 스타일 커피' },
+    { type: '음료', name: '코코넛 주스 (Nước dừa)', desc: '시원한 생코코넛 주스' },
+    { type: '음료', name: '망고 스무디', desc: '향이 가득한 망고 스무디' },
+    { type: '음료', name: '수박 주스', desc: '시원하고 달콤한 수박 주스' },
+    { type: '음료', name: '사탕수수 주스', desc: '은은한 단맛의 사탕수수 주스' },
+    { type: '음료', name: '연꽃차 (Trà sen)', desc: '향긋한 연꽃 향의 전통차' },
+    { type: '음료', name: '연잎차 (Trà lá sen)', desc: '은은한 향의 연잎차' },
+    { type: '음료', name: '계피차 (Trà quế)', desc: '따뜻하고 향긋한 계피차' },
+  ],
+  wish_alcohol: [
+    { type: '주류', name: '사이공 스페셜 (Saigon Special)', desc: '' },
+    { type: '주류', name: '하노이 맥주 (Bia Hà Nội)', desc: '' },
+    { type: '주류', name: '333 맥주 (Ba Ba Ba)', desc: '' },
+    { type: '주류', name: '타이거 맥주 (Tiger)', desc: '' },
+  ],
+  wish_tips: [
+    { type: '팁', name: '고수 빼주세요', desc: '"Không rau mùi" (코옹 라우 무이)' },
+    { type: '팁', name: '안 맵게 해주세요', desc: '"Không cay" (코옹 까이)' },
+    { type: '팁', name: '베트남 물은 석회질이 많아요', desc: '수돗물 대신 생수 구매를 추천해요' },
+    { type: '팁', name: '길거리 음식은 위생 상태 확인', desc: '사람 많고 회전 빠른 곳을 고르면 더 안전해요' },
+    { type: '팁', name: '현금(VND) 준비하기', desc: '흥정은 미소와 함께 😊' },
+  ],
+  wish_howto: [
+    { type: '방법', name: '쌈채소에 싸서 소스에 찍어 먹기', desc: '' },
+    { type: '방법', name: '라이스페이퍼에 싸서 먹기', desc: '' },
+    { type: '방법', name: '국수·쌀밥과 곁들여 먹기', desc: '' },
+    { type: '방법', name: '핫팟(전골)은 여럿이 나눠 먹기', desc: '' },
+  ],
+  wish_areas: [
+    { type: '지역', name: '호안끼엠 구시가지(Old Quarter) 주변', desc: '하노이' },
+    { type: '지역', name: '떠이호(서호) 지역', desc: '하노이' },
+    { type: '지역', name: '롯데센터 & 하노이역 주변', desc: '하노이' },
+    { type: '지역', name: '미딩 / 짬자 / 틴비엔 지역', desc: '하노이' },
+    { type: '지역', name: '사파 마켓 주변', desc: '사파' },
+    { type: '지역', name: '센크라자 주변', desc: '사파' },
+    { type: '지역', name: '깟깟마을 가는 길', desc: '사파' },
+    { type: '지역', name: '따반 / 라오까이 지역', desc: '사파' },
+  ],
+};
+
 const DEFAULT_PHRASES = [
   { situation: '인사 및 기본 표현', phrases: [
     ['Xin chào', '안녕하세요', '씬 짜오'],
@@ -265,6 +358,14 @@ function loadReference() {
   if (v && Array.isArray(v.wishlist)) {
     v.wish_etc = [...(v.wish_etc || []), ...v.wishlist];
     delete v.wishlist;
+    save(STORAGE_KEYS.reference, v);
+  }
+  // 위시리스트 카테고리를 한 번도 채운 적이 없으면(카테고리 키 자체가 없으면) 기본 음식 목록으로 채워줌.
+  // 사용자가 나중에 전부 지워도 다시 채워지지 않도록, 키가 하나라도 존재하면 건드리지 않음.
+  if (v && !REF_WISHLIST_CATEGORIES.some(c => c.key in v)) {
+    REF_WISHLIST_CATEGORIES.forEach(c => {
+      v[c.key] = (DEFAULT_WISHLIST[c.key] || []).map(item => ({ id: uid(), done: false, ...item }));
+    });
     save(STORAGE_KEYS.reference, v);
   }
   return v;
