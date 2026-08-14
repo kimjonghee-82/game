@@ -344,18 +344,21 @@ function attachSyncListener() {
   });
 }
 
+function pushSyncNow() {
+  if (!syncDb) return Promise.reject(new Error('동기화가 연결되지 않았습니다'));
+  return syncDb.collection('trips').doc(getTripCode()).set({
+    itinerary: loadItinerary(),
+    expenses: loadExpenses(),
+    reference: loadReference(),
+    otherVideos: loadVideos(),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true }).catch(e => { console.error('sync push failed', e); setSyncStatus('error'); throw e; });
+}
+
 function scheduleSyncPush() {
   if (syncApplyingRemote || !syncDb) return;
   clearTimeout(syncPushTimer);
-  syncPushTimer = setTimeout(() => {
-    syncDb.collection('trips').doc(getTripCode()).set({
-      itinerary: loadItinerary(),
-      expenses: loadExpenses(),
-      reference: loadReference(),
-      otherVideos: loadVideos(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true }).catch(e => { console.error('sync push failed', e); setSyncStatus('error'); });
-  }, 500);
+  syncPushTimer = setTimeout(pushSyncNow, 500);
 }
 
 function seedDefaultsIfEmpty() {
@@ -2175,6 +2178,17 @@ document.getElementById('settings-save-btn').addEventListener('click', () => {
   if (getTripCode() !== prevTripCode) attachSyncListener();
   closeModal('modal-settings');
   toast('설정을 저장했습니다');
+});
+
+document.getElementById('btn-sync-push-now').addEventListener('click', () => {
+  const s = loadSettings();
+  s.tripCode = document.getElementById('settings-trip-code').value.trim();
+  saveSettings(s);
+  attachSyncListener();
+  toast('업로드 중...');
+  pushSyncNow()
+    .then(() => toast('이 기기의 데이터를 클라우드에 업로드했습니다'))
+    .catch(() => toast('업로드에 실패했습니다. 잠시 후 다시 시도해주세요'));
 });
 
 /* -------- 설정 내보내기/가져오기 코드 (기기 간 공유용, 깃허브에는 저장되지 않음) -------- */
