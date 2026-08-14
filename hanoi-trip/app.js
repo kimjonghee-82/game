@@ -3,6 +3,10 @@
    모든 데이터는 브라우저 localStorage 에만 저장됩니다 (서버/백엔드 없음).
    ========================================================================== */
 
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+
 const STORAGE_KEYS = {
   settings: 'hanoi_trip_settings_v1',
   itinerary: 'hanoi_trip_itinerary_v1',
