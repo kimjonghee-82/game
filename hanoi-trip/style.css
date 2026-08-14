@@ -189,8 +189,6 @@ body{
 .doc-upload-btn{width:100%}
 .doc-add-row{border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:10px}
 .doc-add-row input[type="text"]{width:100%;margin-bottom:8px;padding:8px;border:1px solid var(--line);border-radius:6px;font-size:14px;font-family:inherit;box-sizing:border-box}
-.doc-row-source-toggle{display:flex;gap:14px;margin-bottom:8px;font-size:13px;color:var(--ink)}
-.doc-row-source-toggle label{display:flex;align-items:center;gap:4px;cursor:pointer}
 .doc-row-file-btn{width:100%;margin-bottom:8px}
 .doc-add-row-foot{display:flex;gap:8px;align-items:center}
 .doc-row-kind{flex:1;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:inherit}
@@ -199,6 +197,7 @@ body{
 .doc-viewer-body{max-height:64vh;overflow:auto;background:#f3f3f3;border-radius:8px;margin-bottom:12px}
 .doc-viewer-body iframe{width:100%;height:64vh;border:0;display:block}
 .doc-viewer-body img{width:100%;display:block}
+.doc-broken{padding:40px 16px;text-align:center;color:var(--muted);font-size:13px}
 
 .grid-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
 

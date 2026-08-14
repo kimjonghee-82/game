@@ -278,9 +278,28 @@ function loadTranslations() { return load(STORAGE_KEYS.translations, []); }
 function saveTranslations(v) { save(STORAGE_KEYS.translations, v); }
 function loadDocuments() { return load(STORAGE_KEYS.documents, []); }
 function saveDocuments(v) { save(STORAGE_KEYS.documents, v); }
-/** 오프라인 첨부 파일 목록(기기 로컬 전용, 동기화되지 않음). 실제 파일 내용은 Cache Storage에 별도 저장. */
-function loadLocalDocuments() { return load(STORAGE_KEYS.localDocuments, []); }
-function saveLocalDocuments(v) { save(STORAGE_KEYS.localDocuments, v); }
+/** 이 기기에 오프라인 사본(Cache Storage)이 있는 자료 id 목록. 기기 로컬 전용이라 동기화되지 않음.
+    예전엔 로컬 자료가 loadDocuments()와 별개인 전체 레코드로 저장됐었는데, 지금은 자료 하나가
+    링크와 오프라인 사본을 동시에 가질 수 있도록 메타데이터는 loadDocuments()로 통합하고 여기는
+    "이 기기에 오프라인 사본이 있는지"만 id로 표시. 예전 형식 데이터는 최초 로드 시 자동 이관. */
+function loadLocalCacheIds() {
+  const raw = load(STORAGE_KEYS.localDocuments, []);
+  if (raw.length && raw[0] && typeof raw[0] === 'object' && 'name' in raw[0]) {
+    const docs = loadDocuments();
+    raw.forEach(old => {
+      if (!docs.find(d => d.id === old.id)) {
+        docs.push({ id: old.id, name: old.name, kind: old.kind, topic: old.topic || '기타', url: null, addedAt: old.addedAt || Date.now() });
+      }
+    });
+    saveDocuments(docs);
+    const ids = raw.map(old => old.id);
+    save(STORAGE_KEYS.localDocuments, ids);
+    return ids;
+  }
+  return raw;
+}
+function saveLocalCacheIds(v) { save(STORAGE_KEYS.localDocuments, v); }
+function localDocCacheKey(id) { return location.origin + '/__local-doc__/' + id; }
 
 /* ============================== 실시간 동기화 (Firebase Firestore) ==============================
    일정/비용/참고사항/기타(영상) 데이터를 기기 간 실시간으로 동기화합니다.
@@ -396,36 +415,41 @@ const LOCAL_DOC_CACHE_NAME = 'hanoi-trip-local-docs';
 function getDocTopics() {
   const topics = new Set();
   loadDocuments().forEach(d => { if (d.topic) topics.add(d.topic); });
-  loadLocalDocuments().forEach(d => { if (d.topic) topics.add(d.topic); });
   return Array.from(topics);
 }
 
 function renderDocDrawer() {
-  const docs = loadDocuments().map(d => ({ ...d, source: 'cloud', topic: d.topic || '기타' }));
-  const localDocs = loadLocalDocuments().map(d => ({ ...d, source: 'local', topic: d.topic || '기타' }));
-  const all = [...docs, ...localDocs].sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
+  const localIds = new Set(loadLocalCacheIds()); // 먼저 호출: 예전 형식 로컬 자료 이관이 여기서 일어남
+  const docs = loadDocuments();
   const list = document.getElementById('doc-list');
-  if (!all.length) {
+  if (!docs.length) {
     list.innerHTML = '<div class="exp-empty">아래 버튼으로 자료를 추가해보세요</div>';
     return;
   }
+  const sorted = [...docs].sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
   const groups = {};
   const order = [];
-  all.forEach(d => {
-    if (!groups[d.topic]) { groups[d.topic] = []; order.push(d.topic); }
-    groups[d.topic].push(d);
+  sorted.forEach(d => {
+    const topic = d.topic || '기타';
+    if (!groups[topic]) { groups[topic] = []; order.push(topic); }
+    groups[topic].push(d);
   });
   list.innerHTML = order.map(topic => `
     <div class="doc-group">
       <div class="doc-group-title">${escapeHtml(topic)}</div>
-      ${groups[topic].map(d => `
-        <div class="doc-item" data-id="${d.id}" data-source="${d.source}">
+      ${groups[topic].map(d => {
+        const hasLink = !!d.url;
+        const hasLocal = localIds.has(d.id);
+        const badge = hasLink && hasLocal ? '☁️ 동기화 · 📵 오프라인' : hasLink ? '☁️ 동기화됨' : '📵 이 기기에만(오프라인)';
+        return `
+        <div class="doc-item" data-id="${d.id}">
           <div class="doc-icon">${d.kind === 'photo' ? '🖼️' : '📄'}</div>
           <div class="doc-info">
             <div class="doc-name">${escapeHtml(d.name)}</div>
-            <div class="doc-meta">${d.kind === 'photo' ? '사진' : 'PDF/문서'} · ${d.source === 'local' ? '📵 이 기기에만(오프라인)' : '☁️ 동기화됨'}</div>
+            <div class="doc-meta">${d.kind === 'photo' ? '사진' : 'PDF/문서'} · ${badge}</div>
           </div>
-        </div>`).join('')}
+        </div>`;
+      }).join('')}
     </div>`).join('');
 }
 
@@ -441,19 +465,13 @@ document.getElementById('doc-drawer-tab').addEventListener('click', openDocDrawe
 document.getElementById('doc-drawer-close-btn').addEventListener('click', closeDocDrawer);
 document.getElementById('doc-drawer-backdrop').addEventListener('click', closeDocDrawer);
 
-let docAddRowSeq = 0;
 function docAddRowTemplate() {
-  const rowName = 'doc-row-source-' + (docAddRowSeq++);
   const div = document.createElement('div');
   div.className = 'doc-add-row';
   div.innerHTML = `
     <input type="text" class="doc-row-name" placeholder="이름 (예: 대한항공 e티켓)">
-    <div class="doc-row-source-toggle">
-      <label><input type="radio" name="${rowName}" class="doc-row-source" value="link" checked> 링크</label>
-      <label><input type="radio" name="${rowName}" class="doc-row-source" value="local"> 오프라인 파일</label>
-    </div>
-    <input type="text" class="doc-row-link" placeholder="구글 드라이브 공유 링크 또는 PDF·이미지 직링크">
-    <button type="button" class="btn small ghost doc-row-file-btn hidden">📥 파일 선택</button>
+    <input type="text" class="doc-row-link" placeholder="구글 드라이브 공유 링크 (선택)">
+    <button type="button" class="btn small ghost doc-row-file-btn">📥 오프라인 파일 선택 (선택)</button>
     <input type="file" class="doc-row-file hidden" accept="application/pdf,image/*">
     <div class="doc-add-row-foot">
       <select class="doc-row-kind">
@@ -469,17 +487,10 @@ function addDocAddRow() {
 }
 document.getElementById('doc-add-row-btn').addEventListener('click', addDocAddRow);
 document.getElementById('doc-add-rows').addEventListener('change', (e) => {
-  if (e.target.classList.contains('doc-row-source')) {
-    const row = e.target.closest('.doc-add-row');
-    const isLocal = row.querySelector('.doc-row-source:checked').value === 'local';
-    row.querySelector('.doc-row-link').classList.toggle('hidden', isLocal);
-    row.querySelector('.doc-row-file-btn').classList.toggle('hidden', !isLocal);
-    return;
-  }
   if (e.target.classList.contains('doc-row-file')) {
     const row = e.target.closest('.doc-add-row');
     const file = e.target.files[0];
-    row.querySelector('.doc-row-file-btn').textContent = file ? '📥 ' + file.name : '📥 파일 선택';
+    row.querySelector('.doc-row-file-btn').textContent = file ? '📥 ' + file.name : '📥 오프라인 파일 선택 (선택)';
   }
 });
 document.getElementById('doc-add-rows').addEventListener('click', (e) => {
@@ -504,132 +515,114 @@ document.getElementById('doc-add-cancel-btn').addEventListener('click', () => cl
 document.getElementById('doc-add-save-btn').addEventListener('click', async () => {
   const topic = document.getElementById('doc-add-topic').value.trim() || '기타';
   const rows = Array.from(document.querySelectorAll('.doc-add-row'));
-  const cloudToAdd = [];
-  const localToAdd = [];
+  const toAdd = [];
   let skipped = 0;
   for (const row of rows) {
     const name = row.querySelector('.doc-row-name').value.trim();
-    const source = row.querySelector('.doc-row-source:checked').value;
+    const link = row.querySelector('.doc-row-link').value.trim();
+    const file = row.querySelector('.doc-row-file').files[0];
     const kind = row.querySelector('.doc-row-kind').value;
-    if (source === 'link') {
-      const link = row.querySelector('.doc-row-link').value.trim();
-      if (!name && !link) continue;
-      if (!name || isDriveFolderLink(link) || !parseDocLink(link)) { skipped++; continue; }
-      cloudToAdd.push({ name, url: link, kind });
-    } else {
-      const file = row.querySelector('.doc-row-file').files[0];
-      if (!name && !file) continue;
-      if (!name || !file) { skipped++; continue; }
-      localToAdd.push({ name, kind: file.type === 'application/pdf' ? 'pdf' : 'photo', file });
-    }
+    if (!name && !link && !file) continue;
+    const validLink = link && !isDriveFolderLink(link) && parseDocLink(link) ? link : null;
+    if (!name || (!validLink && !file)) { skipped++; continue; }
+    toAdd.push({ name, kind, url: validLink, file: file || null });
   }
-  if (!cloudToAdd.length && !localToAdd.length) {
+  if (!toAdd.length) {
     toast(skipped ? '인식할 수 있는 자료가 없어요. 이름과 링크(또는 파일)를 확인해주세요' : '추가할 자료를 입력해주세요');
     return;
   }
 
-  if (cloudToAdd.length) {
-    const docs = loadDocuments();
-    cloudToAdd.forEach(item => docs.push({ id: uid(), name: item.name, url: item.url, kind: item.kind, topic, addedAt: Date.now() }));
-    saveDocuments(docs);
-  }
-  if (localToAdd.length) {
-    try {
-      const cache = await caches.open(LOCAL_DOC_CACHE_NAME);
-      const docs = loadLocalDocuments();
-      for (const item of localToAdd) {
-        const id = uid();
-        const cacheKey = location.origin + '/__local-doc__/' + id;
-        await cache.put(cacheKey, new Response(item.file, { headers: { 'Content-Type': item.file.type || 'application/octet-stream' } }));
-        docs.push({ id, name: item.name, kind: item.kind, cacheKey, topic, addedAt: Date.now() });
+  const docs = loadDocuments();
+  const localIds = loadLocalCacheIds();
+  let cache = null;
+  for (const item of toAdd) {
+    const id = uid();
+    docs.push({ id, name: item.name, kind: item.kind, url: item.url, topic, addedAt: Date.now() });
+    if (item.file) {
+      try {
+        if (!cache) cache = await caches.open(LOCAL_DOC_CACHE_NAME);
+        await cache.put(localDocCacheKey(id), new Response(item.file, { headers: { 'Content-Type': item.file.type || 'application/octet-stream' } }));
+        localIds.push(id);
+      } catch (e) {
+        console.error('local doc add failed', e);
       }
-      saveLocalDocuments(docs);
-    } catch (e) {
-      console.error('local doc add failed', e);
-      toast('오프라인 파일 저장에 실패했습니다');
-      return;
     }
   }
+  saveDocuments(docs);
+  saveLocalCacheIds(localIds);
   renderDocDrawer();
   closeModal('modal-doc-add');
-  toast(`${cloudToAdd.length + localToAdd.length}개 자료를 추가했습니다` + (skipped ? ` (인식 안 된 ${skipped}개는 제외)` : ''));
+  toast(`${toAdd.length}개 자료를 추가했습니다` + (skipped ? ` (인식 안 된 ${skipped}개는 제외)` : ''));
 });
 
-function deleteDocument(id) {
+async function deleteDocument(id) {
   const docs = loadDocuments();
   saveDocuments(docs.filter((x) => x.id !== id));
+  const localIds = loadLocalCacheIds();
+  if (localIds.includes(id)) {
+    const cache = await caches.open(LOCAL_DOC_CACHE_NAME);
+    await cache.delete(localDocCacheKey(id));
+    saveLocalCacheIds(localIds.filter((x) => x !== id));
+  }
   renderDocDrawer();
 }
 
-function openDocViewer(id) {
+async function openDocViewer(id) {
   const d = loadDocuments().find((x) => x.id === id);
   if (!d) return;
   document.getElementById('doc-viewer-title').textContent = d.name;
   const body = document.getElementById('doc-viewer-body');
-  const parsed = parseDocLink(d.url);
   const dl = document.getElementById('doc-viewer-download-btn');
-  if (parsed && parsed.type === 'gdrive') {
-    body.innerHTML = `<iframe src="https://drive.google.com/file/d/${parsed.id}/preview" title="${escapeHtml(d.name)}" allow="autoplay"></iframe>`;
-    dl.href = `https://drive.google.com/file/d/${parsed.id}/view`;
-    dl.removeAttribute('download');
-    dl.textContent = '구글 드라이브에서 열기';
-  } else {
-    body.innerHTML = d.kind === 'photo'
-      ? `<img src="${escapeHtml(d.url)}" alt="${escapeHtml(d.name)}">`
-      : `<iframe src="${escapeHtml(d.url)}" title="${escapeHtml(d.name)}"></iframe>`;
-    dl.href = d.url;
-    dl.setAttribute('download', d.name);
-    dl.textContent = '다운로드';
-  }
-  document.getElementById('doc-viewer-delete-btn').dataset.id = id;
-  document.getElementById('doc-viewer-delete-btn').dataset.source = 'cloud';
-  openModal('modal-doc-viewer');
-}
+  const hasLocal = loadLocalCacheIds().includes(id);
 
-async function openLocalDocViewer(id) {
-  const d = loadLocalDocuments().find((x) => x.id === id);
-  if (!d) return;
-  const cache = await caches.open(LOCAL_DOC_CACHE_NAME);
-  const res = await cache.match(d.cacheKey);
-  if (!res) { toast('저장된 파일을 찾을 수 없습니다'); return; }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  document.getElementById('doc-viewer-title').textContent = d.name;
-  document.getElementById('doc-viewer-body').innerHTML = d.kind === 'photo'
-    ? `<img src="${url}" alt="${escapeHtml(d.name)}">`
-    : `<iframe src="${url}" title="${escapeHtml(d.name)}"></iframe>`;
-  const dl = document.getElementById('doc-viewer-download-btn');
-  dl.href = url;
-  dl.setAttribute('download', d.name);
-  dl.textContent = '다운로드';
-  document.getElementById('doc-viewer-delete-btn').dataset.id = id;
-  document.getElementById('doc-viewer-delete-btn').dataset.source = 'local';
-  openModal('modal-doc-viewer');
-}
-
-async function deleteLocalDocument(id) {
-  const docs = loadLocalDocuments();
-  const d = docs.find((x) => x.id === id);
-  if (d) {
+  let shown = false;
+  if (hasLocal) {
     const cache = await caches.open(LOCAL_DOC_CACHE_NAME);
-    await cache.delete(d.cacheKey);
+    const res = await cache.match(localDocCacheKey(id));
+    if (res) {
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      body.innerHTML = d.kind === 'photo'
+        ? `<img src="${blobUrl}" alt="${escapeHtml(d.name)}">`
+        : `<iframe src="${blobUrl}" title="${escapeHtml(d.name)}"></iframe>`;
+      dl.href = blobUrl;
+      dl.setAttribute('download', d.name);
+      dl.textContent = '다운로드';
+      shown = true;
+    }
   }
-  saveLocalDocuments(docs.filter((x) => x.id !== id));
-  renderDocDrawer();
+  if (!shown) {
+    const parsed = parseDocLink(d.url);
+    if (parsed && parsed.type === 'gdrive') {
+      body.innerHTML = `<iframe src="https://drive.google.com/file/d/${parsed.id}/preview" title="${escapeHtml(d.name)}" allow="autoplay"></iframe>`;
+      dl.href = `https://drive.google.com/file/d/${parsed.id}/view`;
+      dl.removeAttribute('download');
+      dl.textContent = '구글 드라이브에서 열기';
+    } else if (parsed && parsed.type === 'file') {
+      body.innerHTML = d.kind === 'photo'
+        ? `<img src="${escapeHtml(d.url)}" alt="${escapeHtml(d.name)}">`
+        : `<iframe src="${escapeHtml(d.url)}" title="${escapeHtml(d.name)}"></iframe>`;
+      dl.href = d.url;
+      dl.setAttribute('download', d.name);
+      dl.textContent = '다운로드';
+    } else {
+      body.innerHTML = '<div class="doc-broken">열 수 있는 자료가 없습니다</div>';
+      dl.removeAttribute('href');
+      dl.textContent = '다운로드';
+    }
+  }
+  document.getElementById('doc-viewer-delete-btn').dataset.id = id;
+  openModal('modal-doc-viewer');
 }
 
 document.getElementById('doc-list').addEventListener('click', (e) => {
   const item = e.target.closest('.doc-item');
-  if (!item) return;
-  if (item.dataset.source === 'local') openLocalDocViewer(item.dataset.id);
-  else openDocViewer(item.dataset.id);
+  if (item) openDocViewer(item.dataset.id);
 });
 document.getElementById('doc-viewer-close-btn').addEventListener('click', () => closeModal('modal-doc-viewer'));
 document.getElementById('doc-viewer-delete-btn').addEventListener('click', (e) => {
   if (!confirm('이 자료를 삭제할까요?')) return;
-  const id = e.target.dataset.id;
-  if (e.target.dataset.source === 'local') deleteLocalDocument(id);
-  else deleteDocument(id);
+  deleteDocument(e.target.dataset.id);
   closeModal('modal-doc-viewer');
 });
 
