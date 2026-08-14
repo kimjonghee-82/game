@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="여행 플래너">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=41">
+<link rel="stylesheet" href="style.css?v=42">
 </head>
 <body>
 
@@ -143,13 +143,9 @@
     <h3>자료함</h3>
     <button id="doc-drawer-close-btn" type="button" class="icon-btn" title="닫기">✕</button>
   </div>
-  <p class="help-text">바우처·여권 사진 등 PDF/이미지를 구글 드라이브에 올린 뒤 공유 링크를 붙여넣으면, 모든 기기에서 바로 보고 다운로드할 수 있어요. 인터넷 없이 쓰려면 "오프라인 파일 추가"로 이미 다운로드해둔 파일을 이 기기에 직접 저장하세요 (다른 기기와는 동기화되지 않아요).</p>
+  <p class="help-text">바우처·여권 사진 등 PDF/이미지를 구글 드라이브 링크로 추가하면 모든 기기에서 동기화되고, 오프라인 파일로 추가하면 이 기기에 저장돼서 인터넷 없이도 바로 열립니다.</p>
   <div id="doc-list" class="doc-list"></div>
-  <input type="file" id="doc-local-file-input" accept="application/pdf,image/*" class="hidden">
-  <div class="doc-drawer-actions">
-    <button id="btn-doc-upload" type="button" class="btn primary doc-upload-btn">+ 자료 추가</button>
-    <button id="btn-doc-local-upload" type="button" class="btn ghost doc-upload-btn">📥 오프라인 파일 추가</button>
-  </div>
+  <button id="btn-doc-upload" type="button" class="btn primary doc-upload-btn">+ 자료 추가</button>
 </div>
 
 <!-- ============ 모달들 ============ -->
@@ -161,17 +157,13 @@
   <div class="modal-title-row">
     <h3>자료 추가</h3>
   </div>
-  <label>이름 <input type="text" id="doc-add-name" placeholder="예: 여권 사본, 호텔 바우처"></label>
-  <label>링크
-    <input type="text" id="doc-add-link" placeholder="구글 드라이브 공유 링크 또는 PDF·이미지 직링크">
+  <label>주제
+    <input type="text" id="doc-add-topic" list="doc-topic-list" placeholder="예: 항공권, 호텔 바우처, 여권">
+    <datalist id="doc-topic-list"></datalist>
   </label>
-  <p class="help-text" style="margin-top:-6px">구글 드라이브에 파일을 올린 뒤 "링크가 있는 모든 사용자"로 공유한 <b>개별 파일</b> 링크를 붙여넣으세요. 폴더 링크는 지원되지 않아요 — 파일을 하나씩 열어서 그 파일의 공유 링크를 추가해주세요.</p>
-  <label>종류
-    <select id="doc-add-kind">
-      <option value="pdf">PDF/문서</option>
-      <option value="photo">사진</option>
-    </select>
-  </label>
+  <div id="doc-add-rows"></div>
+  <button type="button" id="doc-add-row-btn" class="btn small ghost">+ 파일 추가</button>
+  <p class="help-text" style="margin-top:10px">각 파일마다 <b>링크</b>(구글 드라이브 개별 파일 공유 링크, 폴더 링크는 안 됨 — 모든 기기에 동기화)와 <b>오프라인</b>(이 기기에 이미 다운로드된 파일 선택 — 이 기기에만 저장, 인터넷 불필요) 중 고르실 수 있어요. 같은 주제로 여러 개를 한 번에 추가할 수 있습니다.</p>
   <div class="modal-actions">
     <div class="spacer"></div>
     <button id="doc-add-cancel-btn" class="btn ghost">취소</button>
@@ -437,6 +429,6 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script src="app.js?v=43"></script>
+<script src="app.js?v=44"></script>
 </body>
 </html>

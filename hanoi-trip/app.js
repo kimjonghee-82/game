@@ -393,21 +393,40 @@ function parseDocLink(url) {
 
 const LOCAL_DOC_CACHE_NAME = 'hanoi-trip-local-docs';
 
+function getDocTopics() {
+  const topics = new Set();
+  loadDocuments().forEach(d => { if (d.topic) topics.add(d.topic); });
+  loadLocalDocuments().forEach(d => { if (d.topic) topics.add(d.topic); });
+  return Array.from(topics);
+}
+
 function renderDocDrawer() {
-  const docs = loadDocuments().map(d => ({ ...d, source: 'cloud' }));
-  const localDocs = loadLocalDocuments().map(d => ({ ...d, source: 'local' }));
+  const docs = loadDocuments().map(d => ({ ...d, source: 'cloud', topic: d.topic || '기타' }));
+  const localDocs = loadLocalDocuments().map(d => ({ ...d, source: 'local', topic: d.topic || '기타' }));
   const all = [...docs, ...localDocs].sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
   const list = document.getElementById('doc-list');
-  list.innerHTML = all.length
-    ? all.map(d => `
-      <div class="doc-item" data-id="${d.id}" data-source="${d.source}">
-        <div class="doc-icon">${d.kind === 'photo' ? '🖼️' : '📄'}</div>
-        <div class="doc-info">
-          <div class="doc-name">${escapeHtml(d.name)}</div>
-          <div class="doc-meta">${d.kind === 'photo' ? '사진' : 'PDF/문서'} · ${d.source === 'local' ? '📵 이 기기에만(오프라인)' : '☁️ 동기화됨'}</div>
-        </div>
-      </div>`).join('')
-    : '<div class="exp-empty">아래 버튼으로 자료를 추가해보세요</div>';
+  if (!all.length) {
+    list.innerHTML = '<div class="exp-empty">아래 버튼으로 자료를 추가해보세요</div>';
+    return;
+  }
+  const groups = {};
+  const order = [];
+  all.forEach(d => {
+    if (!groups[d.topic]) { groups[d.topic] = []; order.push(d.topic); }
+    groups[d.topic].push(d);
+  });
+  list.innerHTML = order.map(topic => `
+    <div class="doc-group">
+      <div class="doc-group-title">${escapeHtml(topic)}</div>
+      ${groups[topic].map(d => `
+        <div class="doc-item" data-id="${d.id}" data-source="${d.source}">
+          <div class="doc-icon">${d.kind === 'photo' ? '🖼️' : '📄'}</div>
+          <div class="doc-info">
+            <div class="doc-name">${escapeHtml(d.name)}</div>
+            <div class="doc-meta">${d.kind === 'photo' ? '사진' : 'PDF/문서'} · ${d.source === 'local' ? '📵 이 기기에만(오프라인)' : '☁️ 동기화됨'}</div>
+          </div>
+        </div>`).join('')}
+    </div>`).join('');
 }
 
 function openDocDrawer() {
@@ -422,26 +441,117 @@ document.getElementById('doc-drawer-tab').addEventListener('click', openDocDrawe
 document.getElementById('doc-drawer-close-btn').addEventListener('click', closeDocDrawer);
 document.getElementById('doc-drawer-backdrop').addEventListener('click', closeDocDrawer);
 
+let docAddRowSeq = 0;
+function docAddRowTemplate() {
+  const rowName = 'doc-row-source-' + (docAddRowSeq++);
+  const div = document.createElement('div');
+  div.className = 'doc-add-row';
+  div.innerHTML = `
+    <input type="text" class="doc-row-name" placeholder="이름 (예: 대한항공 e티켓)">
+    <div class="doc-row-source-toggle">
+      <label><input type="radio" name="${rowName}" class="doc-row-source" value="link" checked> 링크</label>
+      <label><input type="radio" name="${rowName}" class="doc-row-source" value="local"> 오프라인 파일</label>
+    </div>
+    <input type="text" class="doc-row-link" placeholder="구글 드라이브 공유 링크 또는 PDF·이미지 직링크">
+    <button type="button" class="btn small ghost doc-row-file-btn hidden">📥 파일 선택</button>
+    <input type="file" class="doc-row-file hidden" accept="application/pdf,image/*">
+    <div class="doc-add-row-foot">
+      <select class="doc-row-kind">
+        <option value="pdf">PDF/문서</option>
+        <option value="photo">사진</option>
+      </select>
+      <button type="button" class="doc-row-remove-btn" title="제거">✕</button>
+    </div>`;
+  return div;
+}
+function addDocAddRow() {
+  document.getElementById('doc-add-rows').appendChild(docAddRowTemplate());
+}
+document.getElementById('doc-add-row-btn').addEventListener('click', addDocAddRow);
+document.getElementById('doc-add-rows').addEventListener('change', (e) => {
+  if (e.target.classList.contains('doc-row-source')) {
+    const row = e.target.closest('.doc-add-row');
+    const isLocal = row.querySelector('.doc-row-source:checked').value === 'local';
+    row.querySelector('.doc-row-link').classList.toggle('hidden', isLocal);
+    row.querySelector('.doc-row-file-btn').classList.toggle('hidden', !isLocal);
+    return;
+  }
+  if (e.target.classList.contains('doc-row-file')) {
+    const row = e.target.closest('.doc-add-row');
+    const file = e.target.files[0];
+    row.querySelector('.doc-row-file-btn').textContent = file ? '📥 ' + file.name : '📥 파일 선택';
+  }
+});
+document.getElementById('doc-add-rows').addEventListener('click', (e) => {
+  const fileBtn = e.target.closest('.doc-row-file-btn');
+  if (fileBtn) { fileBtn.closest('.doc-add-row').querySelector('.doc-row-file').click(); return; }
+  const removeBtn = e.target.closest('.doc-row-remove-btn');
+  if (removeBtn) {
+    const rows = document.querySelectorAll('.doc-add-row');
+    if (rows.length <= 1) return;
+    removeBtn.closest('.doc-add-row').remove();
+  }
+});
+
 document.getElementById('btn-doc-upload').addEventListener('click', () => {
-  document.getElementById('doc-add-name').value = '';
-  document.getElementById('doc-add-link').value = '';
-  document.getElementById('doc-add-kind').value = 'pdf';
+  document.getElementById('doc-add-topic').value = '';
+  document.getElementById('doc-topic-list').innerHTML = getDocTopics().map(t => `<option value="${escapeHtml(t)}">`).join('');
+  document.getElementById('doc-add-rows').innerHTML = '';
+  addDocAddRow();
   openModal('modal-doc-add');
 });
 document.getElementById('doc-add-cancel-btn').addEventListener('click', () => closeModal('modal-doc-add'));
-document.getElementById('doc-add-save-btn').addEventListener('click', () => {
-  const name = document.getElementById('doc-add-name').value.trim();
-  const link = document.getElementById('doc-add-link').value.trim();
-  const kind = document.getElementById('doc-add-kind').value;
-  if (!name) { toast('이름을 입력해주세요'); return; }
-  if (isDriveFolderLink(link)) { toast('폴더 링크는 지원되지 않아요. 폴더 안의 파일을 열어 그 파일의 공유 링크를 하나씩 추가해주세요'); return; }
-  if (!parseDocLink(link)) { toast('올바른 링크를 입력해주세요'); return; }
-  const docs = loadDocuments();
-  docs.push({ id: uid(), name, url: link, kind, addedAt: Date.now() });
-  saveDocuments(docs);
+document.getElementById('doc-add-save-btn').addEventListener('click', async () => {
+  const topic = document.getElementById('doc-add-topic').value.trim() || '기타';
+  const rows = Array.from(document.querySelectorAll('.doc-add-row'));
+  const cloudToAdd = [];
+  const localToAdd = [];
+  for (const row of rows) {
+    const name = row.querySelector('.doc-row-name').value.trim();
+    const source = row.querySelector('.doc-row-source:checked').value;
+    const kind = row.querySelector('.doc-row-kind').value;
+    if (source === 'link') {
+      const link = row.querySelector('.doc-row-link').value.trim();
+      if (!name && !link) continue;
+      if (!name) { toast('모든 항목에 이름을 입력해주세요'); return; }
+      if (isDriveFolderLink(link)) { toast('폴더 링크는 지원되지 않아요. 폴더 안의 파일을 열어 그 파일의 공유 링크를 하나씩 추가해주세요'); return; }
+      if (!parseDocLink(link)) { toast(`"${name}"의 링크가 올바르지 않습니다`); return; }
+      cloudToAdd.push({ name, url: link, kind });
+    } else {
+      const file = row.querySelector('.doc-row-file').files[0];
+      if (!name && !file) continue;
+      if (!name) { toast('모든 항목에 이름을 입력해주세요'); return; }
+      if (!file) { toast(`"${name}"에 파일을 선택해주세요`); return; }
+      localToAdd.push({ name, kind: file.type === 'application/pdf' ? 'pdf' : 'photo', file });
+    }
+  }
+  if (!cloudToAdd.length && !localToAdd.length) { toast('추가할 자료를 입력해주세요'); return; }
+
+  if (cloudToAdd.length) {
+    const docs = loadDocuments();
+    cloudToAdd.forEach(item => docs.push({ id: uid(), name: item.name, url: item.url, kind: item.kind, topic, addedAt: Date.now() }));
+    saveDocuments(docs);
+  }
+  if (localToAdd.length) {
+    try {
+      const cache = await caches.open(LOCAL_DOC_CACHE_NAME);
+      const docs = loadLocalDocuments();
+      for (const item of localToAdd) {
+        const id = uid();
+        const cacheKey = location.origin + '/__local-doc__/' + id;
+        await cache.put(cacheKey, new Response(item.file, { headers: { 'Content-Type': item.file.type || 'application/octet-stream' } }));
+        docs.push({ id, name: item.name, kind: item.kind, cacheKey, topic, addedAt: Date.now() });
+      }
+      saveLocalDocuments(docs);
+    } catch (e) {
+      console.error('local doc add failed', e);
+      toast('오프라인 파일 저장에 실패했습니다');
+      return;
+    }
+  }
   renderDocDrawer();
   closeModal('modal-doc-add');
-  toast('자료를 추가했습니다');
+  toast(`${cloudToAdd.length + localToAdd.length}개 자료를 추가했습니다`);
 });
 
 function deleteDocument(id) {
@@ -473,23 +583,6 @@ function openDocViewer(id) {
   document.getElementById('doc-viewer-delete-btn').dataset.id = id;
   document.getElementById('doc-viewer-delete-btn').dataset.source = 'cloud';
   openModal('modal-doc-viewer');
-}
-
-async function addLocalDocument(file) {
-  try {
-    const id = uid();
-    const cacheKey = location.origin + '/__local-doc__/' + id;
-    const cache = await caches.open(LOCAL_DOC_CACHE_NAME);
-    await cache.put(cacheKey, new Response(file, { headers: { 'Content-Type': file.type || 'application/octet-stream' } }));
-    const docs = loadLocalDocuments();
-    docs.push({ id, name: file.name, kind: file.type === 'application/pdf' ? 'pdf' : 'photo', cacheKey, addedAt: Date.now() });
-    saveLocalDocuments(docs);
-    renderDocDrawer();
-    toast('오프라인 자료로 추가했습니다');
-  } catch (e) {
-    console.error('local doc add failed', e);
-    toast('파일을 저장하지 못했습니다');
-  }
 }
 
 async function openLocalDocViewer(id) {
@@ -529,14 +622,6 @@ document.getElementById('doc-list').addEventListener('click', (e) => {
   if (!item) return;
   if (item.dataset.source === 'local') openLocalDocViewer(item.dataset.id);
   else openDocViewer(item.dataset.id);
-});
-document.getElementById('btn-doc-local-upload').addEventListener('click', () => {
-  document.getElementById('doc-local-file-input').click();
-});
-document.getElementById('doc-local-file-input').addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (file) addLocalDocument(file);
 });
 document.getElementById('doc-viewer-close-btn').addEventListener('click', () => closeModal('modal-doc-viewer'));
 document.getElementById('doc-viewer-delete-btn').addEventListener('click', (e) => {
