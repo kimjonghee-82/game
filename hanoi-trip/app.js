@@ -1622,13 +1622,17 @@ document.getElementById('translate-delete-btn').addEventListener('click', () => 
 /* ============================== 실시간 음성 번역 ============================== */
 
 const VOICE_OTHER_LANGS = [
-  { label: '베트남어', code: 'vi' },
-  { label: '영어', code: 'en' },
-  { label: '중국어', code: 'zh-CN' },
-  { label: '일본어', code: 'ja' },
+  { label: '베트남어', code: 'vi', whisperCode: 'vi', family: 'vietnamese' },
+  { label: '영어', code: 'en', whisperCode: 'en', family: 'english' },
+  { label: '중국어', code: 'zh-CN', whisperCode: 'zh', family: 'chinese' },
+  { label: '일본어', code: 'ja', whisperCode: 'ja', family: 'japanese' },
 ];
 document.getElementById('voice-other-lang').innerHTML =
   VOICE_OTHER_LANGS.map(l => `<option value="${l.code}">${l.label}</option>`).join('');
+function voiceOtherLangMeta() {
+  const code = document.getElementById('voice-other-lang').value;
+  return VOICE_OTHER_LANGS.find(l => l.code === code) || VOICE_OTHER_LANGS[0];
+}
 
 const VOICE_HALLUCINATION_PHRASES = [
   '시청해주셔서 감사합니다', '시청해 주셔서 감사합니다', '구독과 좋아요', '구독 좋아요',
@@ -1660,11 +1664,12 @@ async function isSilentAudio(blob, threshold) {
   } catch (e) { return false; }
 }
 
-/** language 파라미터 없이 호출해서 Whisper가 말하는 언어를 자동으로 판단하게 함 */
-async function transcribeVoiceChunkAuto(blob, apiKey) {
+/** forcedLangCode를 안 주면 Whisper가 말하는 언어를 자동으로 판단. 주면 그 언어라고 강제. */
+async function transcribeVoiceChunk(blob, apiKey, forcedLangCode) {
   const fd = new FormData();
   fd.append('file', blob, 'chunk.webm');
   fd.append('model', 'whisper-large-v3');
+  if (forcedLangCode) fd.append('language', forcedLangCode);
   fd.append('response_format', 'verbose_json');
   fd.append('temperature', '0');
   const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
@@ -1677,7 +1682,7 @@ async function transcribeVoiceChunkAuto(blob, apiKey) {
     throw new Error(`Whisper API 오류(${res.status}): ${t.slice(0, 150)}`);
   }
   const data = await res.json();
-  return { text: (data.text || '').trim(), language: data.language || '' };
+  return { text: (data.text || '').trim(), language: data.language || forcedLangCode || '' };
 }
 
 async function googleTranslateText(text, sourceCode, targetCode) {
@@ -1688,10 +1693,33 @@ async function googleTranslateText(text, sourceCode, targetCode) {
   return data[0].map(s => s[0]).join('');
 }
 
+/** 한국어 화자가 상대 언어로 번역된 문장을 그대로 읽을 수 있도록 한글 발음을 만들어줌 */
+async function getKoreanPronunciation(text, apiKey, model) {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+    body: JSON.stringify({
+      model: model || DEFAULT_GROQ_VISION_MODEL,
+      max_tokens: 120,
+      temperature: 0,
+      messages: [
+        { role: 'user', content: `다음 문장을 한국어로 발음 나는 대로만 표기해줘. 설명, 따옴표, 원문 반복 없이 한글 발음 한 줄만 답하세요 (예: "Xin chào" -> 신 짜오): ${text}` },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error('발음 변환 오류(' + res.status + ')');
+  const json = await res.json();
+  const raw = (json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || '';
+  return stripThinkTags(raw).trim();
+}
+
 let voiceStream = null;
 let voiceRecorder = null;
 let voiceActive = false;
 let voiceParas = [];
+let voiceAudioCtx = null;
+let voiceAnalyser = null;
+let voiceMonitorHandle = null;
 
 function setVoiceStatus(t) { document.getElementById('voice-status-text').textContent = t; }
 
@@ -1702,6 +1730,7 @@ function renderVoiceTranscript() {
       <div class="voice-msg ${p.isKorean ? 'kr' : 'other'}">
         <div class="voice-msg-orig">${escapeHtml(p.orig)}</div>
         <div class="voice-msg-trans">${escapeHtml(p.trans)}</div>
+        ${p.pron ? `<div class="voice-msg-pron">${escapeHtml(p.pron)}</div>` : ''}
       </div>`).join('')
     : '<div class="voice-empty">마이크를 눌러 대화를 시작하세요</div>';
   el.scrollTop = el.scrollHeight;
@@ -1712,16 +1741,40 @@ async function processVoiceChunk(blob) {
   if (await isSilentAudio(blob)) return;
   setVoiceStatus('인식 및 번역 중...');
   try {
-    const { text, language } = await transcribeVoiceChunkAuto(blob, settings.groqApiKey);
+    const otherMeta = voiceOtherLangMeta();
+    let { text, language } = await transcribeVoiceChunk(blob, settings.groqApiKey);
     if (!text || text.length < 2) return;
-    const korean = isDetectedKorean(language);
+    let korean = isDetectedKorean(language);
+    const matchesOther = (language || '').toLowerCase().startsWith(otherMeta.family.slice(0, 4));
+
+    // Whisper의 전체 언어 자동감지가 두 언어(한국어/상대 언어) 중 어느 쪽과도 안 맞으면
+    // 오인식일 가능성이 높으므로, 상대 언어로 강제 지정해서 한 번 더 시도
+    if (!korean && !matchesOther) {
+      try {
+        const retry = await transcribeVoiceChunk(blob, settings.groqApiKey, otherMeta.whisperCode);
+        if (retry.text && retry.text.length >= 2) { text = retry.text; korean = false; }
+      } catch (e) { /* 재시도 실패 시 처음 인식 결과를 그대로 사용 */ }
+    }
+
     if (korean && isLikelyVoiceHallucination(text)) return;
-    const otherCode = document.getElementById('voice-other-lang').value;
-    const sourceCode = korean ? 'ko' : otherCode;
-    const targetCode = korean ? otherCode : 'ko';
+    const sourceCode = korean ? 'ko' : otherMeta.code;
+    const targetCode = korean ? otherMeta.code : 'ko';
     const translated = await googleTranslateText(text, sourceCode, targetCode);
-    voiceParas.push({ orig: text, trans: translated, isKorean: korean });
+
+    const para = { id: uid(), orig: text, trans: translated, isKorean: korean, pron: '' };
+    voiceParas.push(para);
     renderVoiceTranscript();
+
+    // 한국어 -> 상대 언어 번역일 때만, 화면을 막지 않고 발음을 나중에 채워 넣음
+    if (korean) {
+      const model = resolveGroqVisionModel(settings.groqVisionModel);
+      getKoreanPronunciation(translated, settings.groqApiKey, model)
+        .then(pron => {
+          para.pron = pron;
+          renderVoiceTranscript();
+        })
+        .catch(() => {});
+    }
   } catch (e) {
     toast('음성 번역 오류: ' + e.message, 4000);
   } finally {
@@ -1729,18 +1782,56 @@ async function processVoiceChunk(blob) {
   }
 }
 
+/** 실시간 볼륨을 재서 말이 끝나고 잠깐 조용해지면 바로 녹음을 끊음 (고정 4초 대기 없이 빠르게 반응) */
+function getVoiceRms() {
+  if (!voiceAnalyser) return 0;
+  const data = new Uint8Array(voiceAnalyser.fftSize);
+  voiceAnalyser.getByteTimeDomainData(data);
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) {
+    const v = (data[i] - 128) / 128;
+    sum += v * v;
+  }
+  return Math.sqrt(sum / data.length);
+}
+
+const VOICE_SPEAK_THRESHOLD = 0.02;
+const VOICE_SILENCE_MS = 600;
+const VOICE_MIN_CHUNK_MS = 400;
+const VOICE_MAX_CHUNK_MS = 8000;
+
 function startVoiceRecorderLoop() {
   if (!voiceStream || !voiceActive) return;
   voiceRecorder = new MediaRecorder(voiceStream, { mimeType: 'audio/webm' });
   const chunks = [];
   voiceRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
   voiceRecorder.onstop = () => {
+    if (voiceMonitorHandle) { clearInterval(voiceMonitorHandle); voiceMonitorHandle = null; }
     const blob = new Blob(chunks, { type: 'audio/webm' });
-    if (blob.size > 1000) processVoiceChunk(blob);
+    if (blob.size > 800) processVoiceChunk(blob);
     if (voiceActive) startVoiceRecorderLoop();
   };
   voiceRecorder.start();
-  setTimeout(() => { if (voiceRecorder && voiceRecorder.state === 'recording') voiceRecorder.stop(); }, 4000);
+
+  const startedAt = Date.now();
+  let hasSpoken = false;
+  let silenceStart = null;
+  voiceMonitorHandle = setInterval(() => {
+    if (!voiceRecorder || voiceRecorder.state !== 'recording') return;
+    const elapsed = Date.now() - startedAt;
+    const rms = getVoiceRms();
+    if (rms > VOICE_SPEAK_THRESHOLD) {
+      hasSpoken = true;
+      silenceStart = null;
+    } else if (hasSpoken) {
+      if (silenceStart === null) silenceStart = Date.now();
+      if (Date.now() - silenceStart > VOICE_SILENCE_MS && elapsed > VOICE_MIN_CHUNK_MS) {
+        voiceRecorder.stop();
+        return;
+      }
+    }
+    if (elapsed > VOICE_MAX_CHUNK_MS) voiceRecorder.stop();
+  }, 100);
 }
 
 async function startVoiceRecording() {
@@ -1750,6 +1841,12 @@ async function startVoiceRecording() {
     toast('마이크 권한이 필요합니다: ' + e.message, 4000);
     return;
   }
+  voiceAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = voiceAudioCtx.createMediaStreamSource(voiceStream);
+  voiceAnalyser = voiceAudioCtx.createAnalyser();
+  voiceAnalyser.fftSize = 512;
+  source.connect(voiceAnalyser);
+
   voiceActive = true;
   document.getElementById('voice-mic-btn').classList.add('listening');
   setVoiceStatus('듣는 중...');
@@ -1758,9 +1855,12 @@ async function startVoiceRecording() {
 
 function stopVoiceRecording() {
   voiceActive = false;
+  if (voiceMonitorHandle) { clearInterval(voiceMonitorHandle); voiceMonitorHandle = null; }
   if (voiceRecorder && voiceRecorder.state === 'recording') { try { voiceRecorder.stop(); } catch (e) {} }
   voiceRecorder = null;
   if (voiceStream) { voiceStream.getTracks().forEach(t => t.stop()); voiceStream = null; }
+  if (voiceAudioCtx) { voiceAudioCtx.close(); voiceAudioCtx = null; }
+  voiceAnalyser = null;
   document.getElementById('voice-mic-btn').classList.remove('listening');
   setVoiceStatus('마이크를 눌러 대화를 시작하세요');
 }
