@@ -16,6 +16,9 @@ body{
   font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;
   background:var(--bg);
   color:var(--ink);
+  min-height:100dvh;
+  display:flex;
+  flex-direction:column;
 }
 #app-header{
   background:var(--panel);
@@ -24,6 +27,7 @@ body{
   position:sticky;
   top:0;
   z-index:50;
+  flex:0 0 auto;
 }
 .header-top{
   display:flex;
@@ -56,9 +60,9 @@ body{
   cursor:pointer;
   flex-shrink:0;
 }
-#app-main{padding:14px;max-width:1400px;margin:0 auto}
-.tab-panel{display:none}
-.tab-panel.active{display:block}
+#app-main{padding:14px;max-width:1400px;margin:0 auto;flex:1 1 auto;display:flex;flex-direction:column;width:100%}
+.tab-panel{display:none;flex-direction:column}
+.tab-panel.active{display:flex;flex:1 1 auto;min-height:0}
 
 .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
 .status-text{font-size:12px;color:var(--muted)}
@@ -94,6 +98,7 @@ body{
 .day-view{
   background:var(--panel);border:1px solid var(--line);border-radius:14px;
   padding:16px 14px 84px;min-height:120px;touch-action:pan-y;
+  flex:1 1 auto;
 }
 .tl-empty{color:var(--muted);font-size:13.5px;text-align:center;padding:24px 10px}
 
@@ -156,7 +161,7 @@ body{
 .expense-total-orig{font-size:13px;color:var(--muted);margin-top:4px;min-height:16px}
 .expense-total-label{font-size:11.5px;color:var(--muted);margin-top:6px}
 
-.expense-list{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;padding-bottom:84px;touch-action:pan-y}
+.expense-list{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;padding-bottom:84px;touch-action:pan-y;flex:1 1 auto}
 .exp-empty{padding:26px 12px;text-align:center;color:var(--muted);font-size:13.5px}
 .exp-row{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer}
 .exp-row:last-child{border-bottom:none}
@@ -174,7 +179,7 @@ body{
 .region-tabs{display:flex;gap:6px;background:#fafafa;border:1px solid var(--line);border-radius:10px;padding:6px;margin-bottom:14px}
 .region-tab-btn{flex:1;background:transparent;border:none;padding:10px;border-radius:8px;font-size:14px;font-weight:bold;color:var(--muted);cursor:pointer;font-family:inherit}
 .region-tab-btn.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.ref-list{list-style:none;padding:0 0 84px;margin:0;display:flex;flex-direction:column;gap:8px;touch-action:pan-y}
+.ref-list{list-style:none;padding:0 0 84px;margin:0;display:flex;flex-direction:column;gap:8px;touch-action:pan-y;flex:1 1 auto}
 .ref-item{border:1px solid var(--line);border-radius:8px;padding:8px 6px 8px 10px;cursor:pointer}
 .ref-item:hover{background:#fafafa}
 .ref-item-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -193,7 +198,7 @@ body{
 @media (max-width:700px){.phrase-list li{grid-template-columns:1fr}}
 
 /* ===== 기타(영상) ===== */
-.other-video-list{display:flex;flex-direction:column;gap:14px;padding-bottom:84px;touch-action:pan-y}
+.other-video-list{display:flex;flex-direction:column;gap:14px;padding-bottom:84px;touch-action:pan-y;flex:1 1 auto}
 .video-card{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
 .video-embed{position:relative;width:100%;padding-top:56.25%;background:#000}
 .video-embed iframe,.video-embed video{position:absolute;top:0;left:0;width:100%;height:100%;border:0}
