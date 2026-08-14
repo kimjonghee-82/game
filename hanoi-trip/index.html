@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>하노이 · 사파 여행 플래너</title>
-<link rel="stylesheet" href="style.css?v=24">
+<link rel="stylesheet" href="style.css?v=25">
 </head>
 <body>
 
@@ -89,6 +89,41 @@
   </svg>
 </button>
 <input type="file" id="translate-photo-input" accept="image/*" capture="environment" class="hidden">
+
+<!-- 화면 위에 항상 떠 있는 실시간 음성 번역 버튼 (모든 탭에서 표시) -->
+<button id="btn-voice-translate" class="fab-btn fab-voice" title="실시간 음성 번역">
+  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="9" y="3" width="6" height="11" rx="3"/>
+    <path d="M5 11a7 7 0 0 0 14 0"/>
+    <line x1="12" y1="18" x2="12" y2="21"/>
+    <line x1="8" y1="21" x2="16" y2="21"/>
+  </svg>
+</button>
+
+<!-- 실시간 음성 번역 전체화면 -->
+<div id="voice-screen" class="voice-screen hidden">
+  <div class="voice-topbar">
+    <button id="voice-close-btn" type="button" class="icon-btn" title="닫기">✕</button>
+    <div class="voice-lang-picker">
+      <span>한국어</span>
+      <span class="voice-lang-arrow">⇄</span>
+      <select id="voice-other-lang"></select>
+    </div>
+    <button id="voice-clear-btn" type="button" class="icon-btn" title="대화 지우기">🗑</button>
+  </div>
+  <div id="voice-transcript" class="voice-transcript"></div>
+  <div class="voice-bottombar">
+    <div id="voice-status-text" class="voice-status-text">마이크를 눌러 대화를 시작하세요</div>
+    <button id="voice-mic-btn" type="button" class="voice-mic-btn" title="마이크 시작/중지">
+      <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="3" width="6" height="11" rx="3"/>
+        <path d="M5 11a7 7 0 0 0 14 0"/>
+        <line x1="12" y1="18" x2="12" y2="21"/>
+        <line x1="8" y1="21" x2="16" y2="21"/>
+      </svg>
+    </button>
+  </div>
+</div>
 
 <!-- ============ 모달들 ============ -->
 
@@ -318,6 +353,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="app.js?v=24"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>

@@ -1619,6 +1619,181 @@ document.getElementById('translate-delete-btn').addEventListener('click', () => 
   toast('삭제했습니다');
 });
 
+/* ============================== 실시간 음성 번역 ============================== */
+
+const VOICE_OTHER_LANGS = [
+  { label: '베트남어', code: 'vi' },
+  { label: '영어', code: 'en' },
+  { label: '중국어', code: 'zh-CN' },
+  { label: '일본어', code: 'ja' },
+];
+document.getElementById('voice-other-lang').innerHTML =
+  VOICE_OTHER_LANGS.map(l => `<option value="${l.code}">${l.label}</option>`).join('');
+
+const VOICE_HALLUCINATION_PHRASES = [
+  '시청해주셔서 감사합니다', '시청해 주셔서 감사합니다', '구독과 좋아요', '구독 좋아요',
+  '다음 영상에서 만나요', '다음 시간에 만나요', '영상 시청해주셔서', 'MBC 뉴스', 'KBS 뉴스',
+  'SBS 뉴스', '자막 제공', '자막제공', '이 영상은', '오늘도 시청해주셔서',
+];
+function isLikelyVoiceHallucination(text) {
+  const t = text.replace(/\s/g, '');
+  if (t.length < 2) return true;
+  return VOICE_HALLUCINATION_PHRASES.some(p => t === p.replace(/\s/g, ''));
+}
+function isDetectedKorean(langField) {
+  const l = (langField || '').toLowerCase();
+  return l === 'ko' || l.startsWith('korean');
+}
+
+/** 무음 구간은 API 호출 없이 건너뛰어 환각(hallucination) 방지 + 호출 절약 */
+async function isSilentAudio(blob, threshold) {
+  try {
+    const arrayBuf = await blob.arrayBuffer();
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuf = await ctx.decodeAudioData(arrayBuf.slice(0));
+    const data = audioBuf.getChannelData(0);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+    const rms = Math.sqrt(sum / data.length);
+    ctx.close();
+    return rms < (threshold || 0.01);
+  } catch (e) { return false; }
+}
+
+/** language 파라미터 없이 호출해서 Whisper가 말하는 언어를 자동으로 판단하게 함 */
+async function transcribeVoiceChunkAuto(blob, apiKey) {
+  const fd = new FormData();
+  fd.append('file', blob, 'chunk.webm');
+  fd.append('model', 'whisper-large-v3');
+  fd.append('response_format', 'verbose_json');
+  fd.append('temperature', '0');
+  const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + apiKey },
+    body: fd,
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`Whisper API 오류(${res.status}): ${t.slice(0, 150)}`);
+  }
+  const data = await res.json();
+  return { text: (data.text || '').trim(), language: data.language || '' };
+}
+
+async function googleTranslateText(text, sourceCode, targetCode) {
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceCode}&tl=${targetCode}&dt=t&q=${encodeURIComponent(text)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('번역 API 오류(' + res.status + ')');
+  const data = await res.json();
+  return data[0].map(s => s[0]).join('');
+}
+
+let voiceStream = null;
+let voiceRecorder = null;
+let voiceActive = false;
+let voiceParas = [];
+
+function setVoiceStatus(t) { document.getElementById('voice-status-text').textContent = t; }
+
+function renderVoiceTranscript() {
+  const el = document.getElementById('voice-transcript');
+  el.innerHTML = voiceParas.length
+    ? voiceParas.map(p => `
+      <div class="voice-msg ${p.isKorean ? 'kr' : 'other'}">
+        <div class="voice-msg-orig">${escapeHtml(p.orig)}</div>
+        <div class="voice-msg-trans">${escapeHtml(p.trans)}</div>
+      </div>`).join('')
+    : '<div class="voice-empty">마이크를 눌러 대화를 시작하세요</div>';
+  el.scrollTop = el.scrollHeight;
+}
+
+async function processVoiceChunk(blob) {
+  const settings = loadSettings();
+  if (await isSilentAudio(blob)) return;
+  setVoiceStatus('인식 및 번역 중...');
+  try {
+    const { text, language } = await transcribeVoiceChunkAuto(blob, settings.groqApiKey);
+    if (!text || text.length < 2) return;
+    const korean = isDetectedKorean(language);
+    if (korean && isLikelyVoiceHallucination(text)) return;
+    const otherCode = document.getElementById('voice-other-lang').value;
+    const sourceCode = korean ? 'ko' : otherCode;
+    const targetCode = korean ? otherCode : 'ko';
+    const translated = await googleTranslateText(text, sourceCode, targetCode);
+    voiceParas.push({ orig: text, trans: translated, isKorean: korean });
+    renderVoiceTranscript();
+  } catch (e) {
+    toast('음성 번역 오류: ' + e.message, 4000);
+  } finally {
+    if (voiceActive) setVoiceStatus('듣는 중...');
+  }
+}
+
+function startVoiceRecorderLoop() {
+  if (!voiceStream || !voiceActive) return;
+  voiceRecorder = new MediaRecorder(voiceStream, { mimeType: 'audio/webm' });
+  const chunks = [];
+  voiceRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+  voiceRecorder.onstop = () => {
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    if (blob.size > 1000) processVoiceChunk(blob);
+    if (voiceActive) startVoiceRecorderLoop();
+  };
+  voiceRecorder.start();
+  setTimeout(() => { if (voiceRecorder && voiceRecorder.state === 'recording') voiceRecorder.stop(); }, 4000);
+}
+
+async function startVoiceRecording() {
+  try {
+    voiceStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  } catch (e) {
+    toast('마이크 권한이 필요합니다: ' + e.message, 4000);
+    return;
+  }
+  voiceActive = true;
+  document.getElementById('voice-mic-btn').classList.add('listening');
+  setVoiceStatus('듣는 중...');
+  startVoiceRecorderLoop();
+}
+
+function stopVoiceRecording() {
+  voiceActive = false;
+  if (voiceRecorder && voiceRecorder.state === 'recording') { try { voiceRecorder.stop(); } catch (e) {} }
+  voiceRecorder = null;
+  if (voiceStream) { voiceStream.getTracks().forEach(t => t.stop()); voiceStream = null; }
+  document.getElementById('voice-mic-btn').classList.remove('listening');
+  setVoiceStatus('마이크를 눌러 대화를 시작하세요');
+}
+
+document.getElementById('voice-mic-btn').addEventListener('click', () => {
+  if (voiceActive) stopVoiceRecording();
+  else startVoiceRecording();
+});
+
+function openVoiceScreen() {
+  renderVoiceTranscript();
+  document.getElementById('voice-screen').classList.remove('hidden');
+}
+function closeVoiceScreen() {
+  stopVoiceRecording();
+  document.getElementById('voice-screen').classList.add('hidden');
+}
+
+document.getElementById('btn-voice-translate').addEventListener('click', () => {
+  const settings = loadSettings();
+  if (!settings.groqApiKey) {
+    toast('먼저 설정에서 Groq API 키를 입력해주세요');
+    openSettingsModal();
+    return;
+  }
+  openVoiceScreen();
+});
+document.getElementById('voice-close-btn').addEventListener('click', closeVoiceScreen);
+document.getElementById('voice-clear-btn').addEventListener('click', () => {
+  voiceParas = [];
+  renderVoiceTranscript();
+});
+
 /* ============================== 구글 시트 내보내기 ============================== */
 
 function buildGridData() {
