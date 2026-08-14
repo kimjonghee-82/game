@@ -2104,10 +2104,18 @@ const VOICE_HALLUCINATION_PHRASES = [
   '다음 영상에서 만나요', '다음 시간에 만나요', '영상 시청해주셔서', 'MBC 뉴스', 'KBS 뉴스',
   'SBS 뉴스', '자막 제공', '자막제공', '이 영상은', '오늘도 시청해주셔서',
 ];
+/** Whisper가 무음/잡음 구간에서 자주 지어내는(환각) 유튜브 구독 유도 문구 등의 키워드.
+    한국어뿐 아니라 상대 언어(베트남어 등) 인식 결과에도 똑같이 나타나므로 언어 구분 없이 검사. */
+const VOICE_HALLUCINATION_KEYWORDS = [
+  '구독', 'subscribe', 'kênh', 'đăng ký', 'channel', 'video hấp dẫn', '좋아요',
+  'thanks for watching', 'cảm ơn đã xem', '자막', 'phụ đề', 'bỏ lỡ',
+];
 function isLikelyVoiceHallucination(text) {
   const t = text.replace(/\s/g, '');
   if (t.length < 2) return true;
-  return VOICE_HALLUCINATION_PHRASES.some(p => t === p.replace(/\s/g, ''));
+  if (VOICE_HALLUCINATION_PHRASES.some(p => t === p.replace(/\s/g, ''))) return true;
+  const lower = text.toLowerCase();
+  return VOICE_HALLUCINATION_KEYWORDS.some(k => lower.includes(k.toLowerCase()));
 }
 function isDetectedKorean(langField) {
   const l = (langField || '').toLowerCase();
@@ -2222,7 +2230,7 @@ async function processVoiceChunk(blob) {
       } catch (e) { /* 재시도 실패 시 처음 인식 결과를 그대로 사용 */ }
     }
 
-    if (korean && isLikelyVoiceHallucination(text)) return;
+    if (isLikelyVoiceHallucination(text)) return;
     const sourceCode = korean ? 'ko' : otherMeta.code;
     const targetCode = korean ? otherMeta.code : 'ko';
     const translated = await googleTranslateText(text, sourceCode, targetCode);
