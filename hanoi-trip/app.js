@@ -1357,6 +1357,13 @@ function renderRegionTabs() {
   document.getElementById('region-tabs').innerHTML = keys.map(k =>
     `<button class="region-tab-btn${k === refRegion ? ' active' : ''}" data-region="${k}">${escapeHtml(regionLabel(k))}</button>`
   ).join('');
+  scrollActiveTabIntoView('region-tabs');
+}
+
+/** 탭이 많아 가로 스크롤이 생기는 경우, 스와이프/클릭으로 바뀐 활성 탭이 항상 보이도록 스크롤 이동 */
+function scrollActiveTabIntoView(containerId) {
+  const activeBtn = document.querySelector(`#${containerId} .region-tab-btn.active`);
+  if (activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
 }
 
 function renderReferenceTab() {
@@ -1631,6 +1638,7 @@ function renderVideoRegionTabs() {
   document.getElementById('video-region-tabs').innerHTML =
     keys.map(k => `<button class="region-tab-btn${k === videoRegion ? ' active' : ''}" data-region="${k}">${escapeHtml(regionLabel(k))}</button>`).join('')
     + `<button type="button" class="region-tab-add-btn" id="btn-add-video-region" title="장소 추가">+</button>`;
+  scrollActiveTabIntoView('video-region-tabs');
 }
 
 function renderOtherTab() {
