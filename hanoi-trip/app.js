@@ -506,6 +506,7 @@ document.getElementById('doc-add-save-btn').addEventListener('click', async () =
   const rows = Array.from(document.querySelectorAll('.doc-add-row'));
   const cloudToAdd = [];
   const localToAdd = [];
+  let skipped = 0;
   for (const row of rows) {
     const name = row.querySelector('.doc-row-name').value.trim();
     const source = row.querySelector('.doc-row-source:checked').value;
@@ -513,19 +514,19 @@ document.getElementById('doc-add-save-btn').addEventListener('click', async () =
     if (source === 'link') {
       const link = row.querySelector('.doc-row-link').value.trim();
       if (!name && !link) continue;
-      if (!name) { toast('모든 항목에 이름을 입력해주세요'); return; }
-      if (isDriveFolderLink(link)) { toast('폴더 링크는 지원되지 않아요. 폴더 안의 파일을 열어 그 파일의 공유 링크를 하나씩 추가해주세요'); return; }
-      if (!parseDocLink(link)) { toast(`"${name}"의 링크가 올바르지 않습니다`); return; }
+      if (!name || isDriveFolderLink(link) || !parseDocLink(link)) { skipped++; continue; }
       cloudToAdd.push({ name, url: link, kind });
     } else {
       const file = row.querySelector('.doc-row-file').files[0];
       if (!name && !file) continue;
-      if (!name) { toast('모든 항목에 이름을 입력해주세요'); return; }
-      if (!file) { toast(`"${name}"에 파일을 선택해주세요`); return; }
+      if (!name || !file) { skipped++; continue; }
       localToAdd.push({ name, kind: file.type === 'application/pdf' ? 'pdf' : 'photo', file });
     }
   }
-  if (!cloudToAdd.length && !localToAdd.length) { toast('추가할 자료를 입력해주세요'); return; }
+  if (!cloudToAdd.length && !localToAdd.length) {
+    toast(skipped ? '인식할 수 있는 자료가 없어요. 이름과 링크(또는 파일)를 확인해주세요' : '추가할 자료를 입력해주세요');
+    return;
+  }
 
   if (cloudToAdd.length) {
     const docs = loadDocuments();
@@ -551,7 +552,7 @@ document.getElementById('doc-add-save-btn').addEventListener('click', async () =
   }
   renderDocDrawer();
   closeModal('modal-doc-add');
-  toast(`${cloudToAdd.length + localToAdd.length}개 자료를 추가했습니다`);
+  toast(`${cloudToAdd.length + localToAdd.length}개 자료를 추가했습니다` + (skipped ? ` (인식 안 된 ${skipped}개는 제외)` : ''));
 });
 
 function deleteDocument(id) {
@@ -1801,6 +1802,7 @@ async function analyzeImageWithGroqVision(dataUrl, apiKey, model, prompt) {
       model: model || DEFAULT_GROQ_VISION_MODEL,
       max_tokens: 2000,
       temperature: 0,
+      reasoning_effort: 'none',
       messages: [
         {
           role: 'user',
@@ -2165,6 +2167,7 @@ async function getKoreanPronunciation(text, apiKey, model) {
       model: model || DEFAULT_GROQ_VISION_MODEL,
       max_tokens: 120,
       temperature: 0,
+      reasoning_effort: 'none',
       messages: [
         { role: 'user', content: `다음 문장을 한국어로 발음 나는 대로만 표기해줘. 설명, 따옴표, 원문 반복 없이 한글 발음 한 줄만 답하세요 (예: "Xin chào" -> 신 짜오): ${text}` },
       ],
