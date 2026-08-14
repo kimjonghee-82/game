@@ -28,6 +28,7 @@ body{
   top:0;
   z-index:50;
   flex:0 0 auto;
+  padding-top:env(safe-area-inset-top);
 }
 .header-top{
   display:flex;
@@ -143,16 +144,16 @@ body{
 }
 .fab-btn:active{background:var(--accent-dark)}
 .fab-center{
-  position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:60;
+  position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:60;
 }
 .fab-translate{
-  position:fixed;left:calc(50% + 99px);bottom:28px;z-index:60;
+  position:fixed;left:calc(50% + 99px);bottom:calc(28px + env(safe-area-inset-bottom));z-index:60;
   width:52px;height:52px;color:#555;
   background:#e2e2e2;box-shadow:0 6px 16px rgba(0,0,0,.2);
 }
 .fab-translate:active{background:#cfcfcf}
 .fab-voice{
-  position:fixed;left:calc(50% - 151px);bottom:28px;z-index:60;
+  position:fixed;left:calc(50% - 151px);bottom:calc(28px + env(safe-area-inset-bottom));z-index:60;
   width:52px;height:52px;color:#555;
   background:#e2e2e2;box-shadow:0 6px 16px rgba(0,0,0,.2);
 }
@@ -259,7 +260,7 @@ body{
 }
 .voice-topbar{
   display:flex;align-items:center;justify-content:space-between;gap:8px;
-  padding:14px 12px;border-bottom:1px solid var(--line);flex:0 0 auto;
+  padding:calc(14px + env(safe-area-inset-top)) 12px 14px;border-bottom:1px solid var(--line);flex:0 0 auto;
 }
 .voice-lang-picker{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:bold;color:var(--ink)}
 .voice-lang-arrow{color:var(--muted);font-weight:normal}
@@ -280,7 +281,7 @@ body{
 .voice-msg-pron{margin-top:3px;opacity:.6;font-size:11.5px;font-style:italic}
 .voice-bottombar{
   flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:10px;
-  padding:16px 14px 26px;border-top:1px solid var(--line);
+  padding:16px 14px calc(26px + env(safe-area-inset-bottom));border-top:1px solid var(--line);
 }
 .voice-status-text{font-size:12.5px;color:var(--muted)}
 .voice-mic-btn{
@@ -339,7 +340,7 @@ body{
 .map-row .btn{flex-shrink:0}
 
 .toast{
-  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  position:fixed;bottom:calc(24px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
   background:#2b2b28;color:#fff;padding:10px 18px;border-radius:20px;
   font-size:13px;z-index:500;box-shadow:0 4px 16px rgba(0,0,0,.3);
   max-width:90%;text-align:center;
