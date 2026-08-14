@@ -2155,7 +2155,13 @@ async function transcribeVoiceChunk(blob, apiKey, forcedLangCode) {
     throw new Error(`Whisper API 오류(${res.status}): ${t.slice(0, 150)}`);
   }
   const data = await res.json();
-  return { text: (data.text || '').trim(), language: data.language || forcedLangCode || '' };
+  // Whisper 자신이 매긴 "이 구간은 발화가 아닐 확률"의 평균. 무음/잡음을 그럴듯한 문장으로
+  // 지어내는(환각) 상황을 사후 키워드 매칭보다 훨씬 일반적으로 걸러낼 수 있음.
+  const segments = data.segments || [];
+  const noSpeechProb = segments.length
+    ? segments.reduce((sum, s) => sum + (typeof s.no_speech_prob === 'number' ? s.no_speech_prob : 0), 0) / segments.length
+    : 0;
+  return { text: (data.text || '').trim(), language: data.language || forcedLangCode || '', noSpeechProb };
 }
 
 async function googleTranslateText(text, sourceCode, targetCode) {
@@ -2216,7 +2222,7 @@ async function processVoiceChunk(blob) {
   setVoiceStatus('인식 및 번역 중...');
   try {
     const otherMeta = voiceOtherLangMeta();
-    let { text, language } = await transcribeVoiceChunk(blob, settings.groqApiKey);
+    let { text, language, noSpeechProb } = await transcribeVoiceChunk(blob, settings.groqApiKey);
     if (!text || text.length < 2) return;
     let korean = isDetectedKorean(language);
     const matchesOther = (language || '').toLowerCase().startsWith(otherMeta.family.slice(0, 4));
@@ -2226,10 +2232,13 @@ async function processVoiceChunk(blob) {
     if (!korean && !matchesOther) {
       try {
         const retry = await transcribeVoiceChunk(blob, settings.groqApiKey, otherMeta.whisperCode);
-        if (retry.text && retry.text.length >= 2) { text = retry.text; korean = false; }
+        if (retry.text && retry.text.length >= 2) { text = retry.text; korean = false; noSpeechProb = retry.noSpeechProb; }
       } catch (e) { /* 재시도 실패 시 처음 인식 결과를 그대로 사용 */ }
     }
 
+    // Whisper 스스로 "이건 발화가 아닐 가능성이 높다"고 판단한 구간은 무음/잡음을 지어낸
+    // 환각일 확률이 높으므로 버림 (실제 사용자가 말한 적 없는 대화가 자동으로 채워지는 문제 방지)
+    if (noSpeechProb > 0.5) return;
     if (isLikelyVoiceHallucination(text)) return;
     const sourceCode = korean ? 'ko' : otherMeta.code;
     const targetCode = korean ? otherMeta.code : 'ko';
