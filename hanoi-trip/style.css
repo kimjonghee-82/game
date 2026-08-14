@@ -135,13 +135,13 @@ body{
   position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:60;
 }
 .fab-translate{
-  position:fixed;left:calc(50% + 75px);bottom:26px;z-index:60;
+  position:fixed;left:calc(50% + 99px);bottom:28px;z-index:60;
   width:52px;height:52px;color:#555;
   background:#e2e2e2;box-shadow:0 6px 16px rgba(0,0,0,.2);
 }
 .fab-translate:active{background:#cfcfcf}
 .fab-voice{
-  position:fixed;left:calc(50% - 127px);bottom:26px;z-index:60;
+  position:fixed;left:calc(50% - 151px);bottom:28px;z-index:60;
   width:52px;height:52px;color:#555;
   background:#e2e2e2;box-shadow:0 6px 16px rgba(0,0,0,.2);
 }
