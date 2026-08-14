@@ -17,6 +17,7 @@ const STORAGE_KEYS = {
   otherVideos: 'hanoi_trip_other_videos_v1',
   translations: 'hanoi_trip_translations_v1',
   documents: 'hanoi_trip_documents_v1',
+  localDocuments: 'hanoi_trip_local_documents_v1',
 };
 
 /** 여러 기기 간 실시간 동기화 대상 (Firestore 로 미러링됨). 번역/음성 기록 등은 기기 로컬 전용. */
@@ -277,6 +278,9 @@ function loadTranslations() { return load(STORAGE_KEYS.translations, []); }
 function saveTranslations(v) { save(STORAGE_KEYS.translations, v); }
 function loadDocuments() { return load(STORAGE_KEYS.documents, []); }
 function saveDocuments(v) { save(STORAGE_KEYS.documents, v); }
+/** 오프라인 첨부 파일 목록(기기 로컬 전용, 동기화되지 않음). 실제 파일 내용은 Cache Storage에 별도 저장. */
+function loadLocalDocuments() { return load(STORAGE_KEYS.localDocuments, []); }
+function saveLocalDocuments(v) { save(STORAGE_KEYS.localDocuments, v); }
 
 /* ============================== 실시간 동기화 (Firebase Firestore) ==============================
    일정/비용/참고사항/기타(영상) 데이터를 기기 간 실시간으로 동기화합니다.
@@ -382,16 +386,20 @@ function parseDocLink(url) {
   return null;
 }
 
+const LOCAL_DOC_CACHE_NAME = 'hanoi-trip-local-docs';
+
 function renderDocDrawer() {
-  const docs = loadDocuments();
+  const docs = loadDocuments().map(d => ({ ...d, source: 'cloud' }));
+  const localDocs = loadLocalDocuments().map(d => ({ ...d, source: 'local' }));
+  const all = [...docs, ...localDocs].sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
   const list = document.getElementById('doc-list');
-  list.innerHTML = docs.length
-    ? docs.map(d => `
-      <div class="doc-item" data-id="${d.id}">
+  list.innerHTML = all.length
+    ? all.map(d => `
+      <div class="doc-item" data-id="${d.id}" data-source="${d.source}">
         <div class="doc-icon">${d.kind === 'photo' ? '🖼️' : '📄'}</div>
         <div class="doc-info">
           <div class="doc-name">${escapeHtml(d.name)}</div>
-          <div class="doc-meta">${d.kind === 'photo' ? '사진' : 'PDF/문서'}</div>
+          <div class="doc-meta">${d.kind === 'photo' ? '사진' : 'PDF/문서'} · ${d.source === 'local' ? '📵 이 기기에만(오프라인)' : '☁️ 동기화됨'}</div>
         </div>
       </div>`).join('')
     : '<div class="exp-empty">아래 버튼으로 자료를 추가해보세요</div>';
@@ -457,17 +465,79 @@ function openDocViewer(id) {
     dl.textContent = '다운로드';
   }
   document.getElementById('doc-viewer-delete-btn').dataset.id = id;
+  document.getElementById('doc-viewer-delete-btn').dataset.source = 'cloud';
   openModal('modal-doc-viewer');
+}
+
+async function addLocalDocument(file) {
+  try {
+    const id = uid();
+    const cacheKey = location.origin + '/__local-doc__/' + id;
+    const cache = await caches.open(LOCAL_DOC_CACHE_NAME);
+    await cache.put(cacheKey, new Response(file, { headers: { 'Content-Type': file.type || 'application/octet-stream' } }));
+    const docs = loadLocalDocuments();
+    docs.push({ id, name: file.name, kind: file.type === 'application/pdf' ? 'pdf' : 'photo', cacheKey, addedAt: Date.now() });
+    saveLocalDocuments(docs);
+    renderDocDrawer();
+    toast('오프라인 자료로 추가했습니다');
+  } catch (e) {
+    console.error('local doc add failed', e);
+    toast('파일을 저장하지 못했습니다');
+  }
+}
+
+async function openLocalDocViewer(id) {
+  const d = loadLocalDocuments().find((x) => x.id === id);
+  if (!d) return;
+  const cache = await caches.open(LOCAL_DOC_CACHE_NAME);
+  const res = await cache.match(d.cacheKey);
+  if (!res) { toast('저장된 파일을 찾을 수 없습니다'); return; }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  document.getElementById('doc-viewer-title').textContent = d.name;
+  document.getElementById('doc-viewer-body').innerHTML = d.kind === 'photo'
+    ? `<img src="${url}" alt="${escapeHtml(d.name)}">`
+    : `<iframe src="${url}" title="${escapeHtml(d.name)}"></iframe>`;
+  const dl = document.getElementById('doc-viewer-download-btn');
+  dl.href = url;
+  dl.setAttribute('download', d.name);
+  dl.textContent = '다운로드';
+  document.getElementById('doc-viewer-delete-btn').dataset.id = id;
+  document.getElementById('doc-viewer-delete-btn').dataset.source = 'local';
+  openModal('modal-doc-viewer');
+}
+
+async function deleteLocalDocument(id) {
+  const docs = loadLocalDocuments();
+  const d = docs.find((x) => x.id === id);
+  if (d) {
+    const cache = await caches.open(LOCAL_DOC_CACHE_NAME);
+    await cache.delete(d.cacheKey);
+  }
+  saveLocalDocuments(docs.filter((x) => x.id !== id));
+  renderDocDrawer();
 }
 
 document.getElementById('doc-list').addEventListener('click', (e) => {
   const item = e.target.closest('.doc-item');
-  if (item) openDocViewer(item.dataset.id);
+  if (!item) return;
+  if (item.dataset.source === 'local') openLocalDocViewer(item.dataset.id);
+  else openDocViewer(item.dataset.id);
+});
+document.getElementById('btn-doc-local-upload').addEventListener('click', () => {
+  document.getElementById('doc-local-file-input').click();
+});
+document.getElementById('doc-local-file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (file) addLocalDocument(file);
 });
 document.getElementById('doc-viewer-close-btn').addEventListener('click', () => closeModal('modal-doc-viewer'));
 document.getElementById('doc-viewer-delete-btn').addEventListener('click', (e) => {
   if (!confirm('이 자료를 삭제할까요?')) return;
-  deleteDocument(e.target.dataset.id);
+  const id = e.target.dataset.id;
+  if (e.target.dataset.source === 'local') deleteLocalDocument(id);
+  else deleteDocument(id);
   closeModal('modal-doc-viewer');
 });
 

@@ -1,4 +1,6 @@
 const CACHE_NAME = 'hanoi-trip-shell-v1';
+// 오프라인 자료함(첨부 파일) 캐시. 사용자 데이터이므로 활성화 시 정리 대상에서 반드시 제외해야 함.
+const PRESERVED_CACHES = ['hanoi-trip-local-docs'];
 const SHELL_FILES = [
   './',
   './index.html',
@@ -18,7 +20,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(
-      keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
+      keys.filter((k) => k !== CACHE_NAME && !PRESERVED_CACHES.includes(k)).map((k) => caches.delete(k))
     ))
   );
   self.clients.claim();

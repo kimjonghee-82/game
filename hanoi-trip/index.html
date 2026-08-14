@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="여행 플래너">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=40">
+<link rel="stylesheet" href="style.css?v=41">
 </head>
 <body>
 
@@ -143,9 +143,13 @@
     <h3>자료함</h3>
     <button id="doc-drawer-close-btn" type="button" class="icon-btn" title="닫기">✕</button>
   </div>
-  <p class="help-text">바우처·여권 사진 등 PDF/이미지를 구글 드라이브에 올린 뒤 공유 링크를 붙여넣으면, 모든 기기에서 바로 보고 다운로드할 수 있어요.</p>
+  <p class="help-text">바우처·여권 사진 등 PDF/이미지를 구글 드라이브에 올린 뒤 공유 링크를 붙여넣으면, 모든 기기에서 바로 보고 다운로드할 수 있어요. 인터넷 없이 쓰려면 "오프라인 파일 추가"로 이미 다운로드해둔 파일을 이 기기에 직접 저장하세요 (다른 기기와는 동기화되지 않아요).</p>
   <div id="doc-list" class="doc-list"></div>
-  <button id="btn-doc-upload" type="button" class="btn primary doc-upload-btn">+ 자료 추가</button>
+  <input type="file" id="doc-local-file-input" accept="application/pdf,image/*" class="hidden">
+  <div class="doc-drawer-actions">
+    <button id="btn-doc-upload" type="button" class="btn primary doc-upload-btn">+ 자료 추가</button>
+    <button id="btn-doc-local-upload" type="button" class="btn ghost doc-upload-btn">📥 오프라인 파일 추가</button>
+  </div>
 </div>
 
 <!-- ============ 모달들 ============ -->
@@ -433,6 +437,6 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script src="app.js?v=41"></script>
+<script src="app.js?v=42"></script>
 </body>
 </html>
