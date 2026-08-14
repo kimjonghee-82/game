@@ -132,29 +132,6 @@ const DEFAULT_WISHLIST = {
     { type: '주류', name: '333 맥주 (Ba Ba Ba)', desc: '' },
     { type: '주류', name: '타이거 맥주 (Tiger)', desc: '' },
   ],
-  wish_tips: [
-    { type: '팁', name: '고수 빼주세요', desc: '"Không rau mùi" (코옹 라우 무이)' },
-    { type: '팁', name: '안 맵게 해주세요', desc: '"Không cay" (코옹 까이)' },
-    { type: '팁', name: '베트남 물은 석회질이 많아요', desc: '수돗물 대신 생수 구매를 추천해요' },
-    { type: '팁', name: '길거리 음식은 위생 상태 확인', desc: '사람 많고 회전 빠른 곳을 고르면 더 안전해요' },
-    { type: '팁', name: '현금(VND) 준비하기', desc: '흥정은 미소와 함께 😊' },
-  ],
-  wish_howto: [
-    { type: '방법', name: '쌈채소에 싸서 소스에 찍어 먹기', desc: '' },
-    { type: '방법', name: '라이스페이퍼에 싸서 먹기', desc: '' },
-    { type: '방법', name: '국수·쌀밥과 곁들여 먹기', desc: '' },
-    { type: '방법', name: '핫팟(전골)은 여럿이 나눠 먹기', desc: '' },
-  ],
-  wish_areas: [
-    { type: '지역', name: '호안끼엠 구시가지(Old Quarter) 주변', desc: '하노이' },
-    { type: '지역', name: '떠이호(서호) 지역', desc: '하노이' },
-    { type: '지역', name: '롯데센터 & 하노이역 주변', desc: '하노이' },
-    { type: '지역', name: '미딩 / 짬자 / 틴비엔 지역', desc: '하노이' },
-    { type: '지역', name: '사파 마켓 주변', desc: '사파' },
-    { type: '지역', name: '센크라자 주변', desc: '사파' },
-    { type: '지역', name: '깟깟마을 가는 길', desc: '사파' },
-    { type: '지역', name: '따반 / 라오까이 지역', desc: '사파' },
-  ],
 };
 
 const DEFAULT_PHRASES = [
@@ -368,6 +345,16 @@ function loadReference() {
     });
     save(STORAGE_KEYS.reference, v);
   }
+  // 더 이상 쓰지 않는 위시리스트 카테고리는 안에 남은 항목이 없을 때만 저장소에서도 정리.
+  // 사용자가 뭔가 넣어둔 게 있다면(드물겠지만) 데이터를 잃지 않도록 그대로 둠.
+  let removedEmpty = false;
+  REF_REMOVED_WISHLIST_KEYS.forEach(key => {
+    if (v && key in v && (v[key] || []).length === 0) {
+      delete v[key];
+      removedEmpty = true;
+    }
+  });
+  if (removedEmpty) save(STORAGE_KEYS.reference, v);
   return v;
 }
 function saveReference(v) { save(STORAGE_KEYS.reference, v); }
@@ -1302,11 +1289,9 @@ const REF_WISHLIST_CATEGORIES = [
   { key: 'wish_fruits', label: '열대 과일' },
   { key: 'wish_drinks', label: '커피 & 음료' },
   { key: 'wish_alcohol', label: '맥주 & 술' },
-  { key: 'wish_tips', label: '식사 팁' },
-  { key: 'wish_howto', label: '즐기는 방법' },
-  { key: 'wish_areas', label: '추천 맛집 지역' },
-  { key: 'wish_etc', label: '기타' },
 ];
+/** 더 이상 쓰지 않는 위시리스트 카테고리. 안에 남은 항목이 없으면 저장소에서도 정리함. */
+const REF_REMOVED_WISHLIST_KEYS = ['wish_tips', 'wish_howto', 'wish_areas', 'wish_etc'];
 const REGION_LABELS = Object.assign(
   { hanoi: '하노이', sapa: '사파' },
   Object.fromEntries(REF_WISHLIST_CATEGORIES.map(c => [c.key, c.label]))
