@@ -236,11 +236,14 @@ body{
 .ref-list{list-style:none;padding:0 0 84px;margin:0;display:flex;flex-direction:column;gap:8px;touch-action:pan-y;flex:1 1 auto}
 .ref-item{border:1px solid var(--line);border-radius:8px;padding:8px 6px 8px 10px;cursor:pointer}
 .ref-item:hover{background:#fafafa}
-.ref-item-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.ref-item .ref-item-title{font-weight:bold;font-size:14px;color:var(--ink)}
+.ref-item-row{display:flex;align-items:center;gap:8px}
+.ref-item .ref-item-title{font-weight:bold;font-size:14px;color:var(--ink);flex:1;min-width:0}
 .ref-item .ref-item-title .tag{margin-right:6px}
 .ref-item .ref-item-desc{font-size:12.5px;color:var(--muted);margin-top:3px}
 .ref-item-map-btn{font-size:17px;flex:0 0 auto;padding:2px 6px}
+.ref-item-check{flex:0 0 auto;width:18px;height:18px;cursor:pointer}
+.ref-item.done .ref-item-title{text-decoration:line-through;color:var(--muted)}
+.ref-item.done .ref-item-desc{text-decoration:line-through}
 
 /* ===== 기본 대화 ===== */
 .phrase-list{list-style:none;margin:0;padding:0}

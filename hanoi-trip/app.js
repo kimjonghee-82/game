@@ -257,7 +257,15 @@ function loadItinerary() { return load(STORAGE_KEYS.itinerary, []); }
 function saveItinerary(v) { save(STORAGE_KEYS.itinerary, v); }
 function loadExpenses() { return load(STORAGE_KEYS.expenses, []); }
 function saveExpenses(v) { save(STORAGE_KEYS.expenses, v); }
-function loadReference() { return load(STORAGE_KEYS.reference, null); }
+/** 예전 데이터엔 위시리스트 지역이 없었으므로, 없으면 빈 배열로 자동 추가 */
+function loadReference() {
+  const v = load(STORAGE_KEYS.reference, null);
+  if (v && !('wishlist' in v)) {
+    v.wishlist = [];
+    save(STORAGE_KEYS.reference, v);
+  }
+  return v;
+}
 function saveReference(v) { save(STORAGE_KEYS.reference, v); }
 function loadPhrases() { return load(STORAGE_KEYS.phrases, null); }
 function savePhrases(v) { save(STORAGE_KEYS.phrases, v); }
@@ -302,7 +310,7 @@ function saveLocalCacheIds(v) { save(STORAGE_KEYS.localDocuments, v); }
 function localDocCacheKey(id) { return location.origin + '/__local-doc__/' + id; }
 
 /* ============================== 실시간 동기화 (Firebase Firestore) ==============================
-   일정/비용/참고사항/기타(영상) 데이터를 기기 간 실시간으로 동기화합니다.
+   일정/비용/투어 정보/기타(영상) 데이터를 기기 간 실시간으로 동기화합니다.
    firebaseConfig 의 apiKey 는 비밀키가 아니라 공개돼도 되는 값이며(구글 공식 안내),
    실제 데이터 보호는 Firestore 보안 규칙(트립 코드 문서 단위)으로 처리합니다. */
 
@@ -629,6 +637,7 @@ document.getElementById('doc-viewer-delete-btn').addEventListener('click', (e) =
 function seedDefaultsIfEmpty() {
   if (!loadReference()) {
     saveReference({
+      wishlist: [],
       hanoi: DEFAULT_REFERENCE.hanoi.map(item => ({ id: uid(), ...item })),
       sapa: DEFAULT_REFERENCE.sapa.map(item => ({ id: uid(), ...item })),
     });
@@ -1180,9 +1189,9 @@ async function refreshExpenseKrw(expenseId, forceRerender) {
   }
 }
 
-/* ============================== 참고사항 탭 ============================== */
+/* ============================== 투어 정보 탭 ============================== */
 
-const REGION_LABELS = { hanoi: '하노이', sapa: '사파' };
+const REGION_LABELS = { wishlist: '위시리스트', hanoi: '하노이', sapa: '사파' };
 function regionLabel(key) { return REGION_LABELS[key] || key; }
 function regionKeyForLabel(label) {
   const found = Object.keys(REGION_LABELS).find(k => REGION_LABELS[k] === label);
@@ -1199,8 +1208,15 @@ function orderedRegionKeys(dataObj) {
   return [...ordered, ...extra];
 }
 
+/** 투어 정보(투어 정보)은 위시리스트를 맨 앞에 두고 그 뒤로 하노이/사파, 그 외 커스텀 장소 순서 */
+function orderedReferenceRegionKeys(dataObj) {
+  const keys = Object.keys(dataObj);
+  const ordered = ['wishlist', 'hanoi', 'sapa'].filter(k => keys.includes(k));
+  const extra = keys.filter(k => !['wishlist', 'hanoi', 'sapa'].includes(k));
+  return [...ordered, ...extra];
+}
 function getRegionKeys() {
-  return orderedRegionKeys(loadReference());
+  return orderedReferenceRegionKeys(loadReference());
 }
 
 function renderRegionTabs() {
@@ -1215,11 +1231,13 @@ function renderReferenceTab() {
   renderRegionTabs();
   const ref = loadReference();
   const items = ref[refRegion] || [];
+  const isWishlist = refRegion === 'wishlist';
   const list = document.getElementById('ref-list-active');
   list.innerHTML = items.map(item => `
-    <li class="ref-item" data-id="${item.id}">
+    <li class="ref-item${item.done ? ' done' : ''}" data-id="${item.id}">
       <div class="ref-item-row">
-        <div class="ref-item-title"><span class="tag">${item.type}</span>${escapeHtml(item.name)}</div>
+        ${isWishlist ? `<input type="checkbox" class="ref-item-check" data-id="${item.id}"${item.done ? ' checked' : ''} title="완료 체크">` : ''}
+        <div class="ref-item-title"><span class="tag">${escapeHtml(item.type)}</span>${escapeHtml(item.name)}</div>
         <button type="button" class="icon-btn ref-item-map-btn" data-id="${item.id}" title="지도에서 보기">🗺️</button>
       </div>
       <div class="ref-item-desc">${escapeHtml(item.desc || '')}</div>
@@ -1273,6 +1291,18 @@ function attachSwipeNav(sectionEl, onSwipe) {
 attachSwipeNav(document.getElementById('tab-reference'), goToAdjacentRegion);
 
 document.getElementById('ref-list-active').addEventListener('click', (e) => {
+  const checkbox = e.target.closest('.ref-item-check');
+  if (checkbox) {
+    e.stopPropagation();
+    const ref = loadReference();
+    const item = (ref[refRegion] || []).find(x => x.id === checkbox.dataset.id);
+    if (item) {
+      item.done = checkbox.checked;
+      saveReference(ref);
+      renderReferenceTab();
+    }
+    return;
+  }
   const mapBtn = e.target.closest('.ref-item-map-btn');
   if (mapBtn) {
     e.stopPropagation();
@@ -1287,6 +1317,11 @@ document.getElementById('ref-list-active').addEventListener('click', (e) => {
   if (li) openRefModal(refRegion, li.dataset.id);
 });
 document.getElementById('btn-add-ref').addEventListener('click', () => openRefModal(refRegion, null));
+
+const REF_KNOWN_TYPES = ['맛집', '명소', '마사지'];
+document.getElementById('ref-type').addEventListener('change', (e) => {
+  document.getElementById('ref-type-custom').classList.toggle('hidden', e.target.value !== '__custom__');
+});
 
 function openRefModal(region, itemId) {
   document.getElementById('ref-id').value = itemId || '';
@@ -1303,7 +1338,15 @@ function openRefModal(region, itemId) {
     item = { ...item, ...((ref[region] || []).find(x => x.id === itemId) || {}) };
   }
   document.getElementById('ref-region-input').value = regionLabel(region);
-  document.getElementById('ref-type').value = item.type;
+  if (REF_KNOWN_TYPES.includes(item.type)) {
+    document.getElementById('ref-type').value = item.type;
+    document.getElementById('ref-type-custom').value = '';
+    document.getElementById('ref-type-custom').classList.add('hidden');
+  } else {
+    document.getElementById('ref-type').value = '__custom__';
+    document.getElementById('ref-type-custom').value = item.type || '';
+    document.getElementById('ref-type-custom').classList.remove('hidden');
+  }
   document.getElementById('ref-name').value = item.name;
   document.getElementById('ref-desc').value = item.desc;
   document.getElementById('ref-map-url').value = item.mapUrl || '';
@@ -1327,7 +1370,8 @@ document.getElementById('ref-save-btn').addEventListener('click', () => {
   const regionLabelInput = document.getElementById('ref-region-input').value.trim();
   if (!regionLabelInput) { toast('장소를 입력해주세요'); return; }
   const region = regionKeyForLabel(regionLabelInput);
-  const type = document.getElementById('ref-type').value;
+  const typeSelect = document.getElementById('ref-type').value;
+  const type = typeSelect === '__custom__' ? (document.getElementById('ref-type-custom').value.trim() || '기타') : typeSelect;
   const name = document.getElementById('ref-name').value.trim();
   const desc = document.getElementById('ref-desc').value.trim();
   const mapUrl = document.getElementById('ref-map-url').value.trim();
@@ -1376,6 +1420,7 @@ document.getElementById('ref-photo-input').addEventListener('change', async (e) 
   if (name) document.getElementById('ref-name').value = name;
   if (result.description && result.description !== name) document.getElementById('ref-desc').value = result.description;
   document.getElementById('ref-type').value = result.category === '식사' ? '맛집' : '명소';
+  document.getElementById('ref-type-custom').classList.add('hidden');
   if (result.website) document.getElementById('ref-website').value = result.website;
   const mapUrl = buildMapUrl(name, result.place);
   if (mapUrl) document.getElementById('ref-map-url').value = mapUrl;

@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="여행 플래너">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=43">
+<link rel="stylesheet" href="style.css?v=44">
 </head>
 <body>
 
@@ -27,7 +27,7 @@
   <nav id="tab-nav">
     <button class="tab-btn active" data-tab="itinerary">일정</button>
     <button class="tab-btn" data-tab="expense">비용</button>
-    <button class="tab-btn" data-tab="reference">참고사항</button>
+    <button class="tab-btn" data-tab="reference">투어 정보</button>
     <button class="tab-btn" data-tab="phrases">대화</button>
     <button class="tab-btn" data-tab="other">기타</button>
   </nav>
@@ -64,11 +64,11 @@
     <button id="btn-add-expense" class="fab-btn fab-center" title="비용 추가">+</button>
   </section>
 
-  <!-- ================= 참고사항 ================= -->
+  <!-- ================= 투어 정보 ================= -->
   <section id="tab-reference" class="tab-panel">
     <div class="region-tabs" id="region-tabs"></div>
     <ul class="ref-list" id="ref-list-active"></ul>
-    <button id="btn-add-ref" class="fab-btn fab-center" title="참고사항 추가">+</button>
+    <button id="btn-add-ref" class="fab-btn fab-center" title="투어 정보 추가">+</button>
   </section>
 
   <!-- ================= 대화 ================= -->
@@ -275,10 +275,10 @@
   </div>
 </div>
 
-<!-- 참고사항 항목 편집 -->
+<!-- 투어 정보 항목 편집 -->
 <div id="modal-ref" class="modal hidden">
   <div class="modal-title-row">
-    <h3>참고사항 항목</h3>
+    <h3>투어 정보 항목</h3>
     <button id="ref-photo-btn" type="button" class="icon-btn" title="사진으로 채우기">📷</button>
   </div>
   <span id="ref-photo-status" class="status-text"></span>
@@ -294,8 +294,11 @@
     <select id="ref-type">
       <option value="맛집">맛집</option>
       <option value="명소">명소</option>
+      <option value="마사지">마사지</option>
+      <option value="__custom__">직접 입력</option>
     </select>
   </label>
+  <input type="text" id="ref-type-custom" class="hidden" placeholder="구분을 직접 입력하세요" style="margin-top:-8px;margin-bottom:12px">
   <label>이름 <input type="text" id="ref-name"></label>
   <label>설명 <textarea id="ref-desc" rows="3"></textarea></label>
   <div class="map-row">
@@ -376,7 +379,7 @@
   <label>여행 종료일 <input type="date" id="settings-end-date"></label>
 
   <h4>사진 분석용 Groq API 키</h4>
-  <p class="help-text">사진을 AI 비전 모델이 직접 보고 상호/장소/영수증 정보를 정리하거나(일정·비용·참고사항) 사진 속 외국어를 한국어로 번역하는 데(카메라 번역) 사용됩니다. <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com</a>에서 발급받으세요. Groq API는 완전 무료이며 카드 등록이 필요 없습니다. (미입력 시 또는 분석 실패 시 사진의 촬영시간·GPS 위치만 자동 인식됩니다)</p>
+  <p class="help-text">사진을 AI 비전 모델이 직접 보고 상호/장소/영수증 정보를 정리하거나(일정·비용·투어 정보) 사진 속 외국어를 한국어로 번역하는 데(카메라 번역) 사용됩니다. <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com</a>에서 발급받으세요. Groq API는 완전 무료이며 카드 등록이 필요 없습니다. (미입력 시 또는 분석 실패 시 사진의 촬영시간·GPS 위치만 자동 인식됩니다)</p>
   <input type="password" id="settings-groq-key" placeholder="gsk_...">
   <label>Groq 비전 모델명 (비워두면 자동으로 최신 모델 사용) <input type="text" id="settings-groq-model" placeholder="qwen/qwen3.6-27b (기본값, 비워두면 자동 적용)"></label>
 
@@ -394,7 +397,7 @@
   </div>
 
   <h4>실시간 동기화 (트립 코드)</h4>
-  <p class="help-text">일정·비용·참고사항·기타(영상)를 다른 기기와 실시간으로 자동 동기화합니다. 아무것도 입력하지 않으면 기본 코드로 자동 연결되어 별도 설정 없이 PC/모바일 간 동기화됩니다. 우리끼리만 쓰고 싶다면 원하는 코드를 만들어서 모든 기기에 똑같이 입력하세요. 동기화 켜지기 <b>전에</b> 이미 저장해둔 데이터가 있다면(예: 예전에 PC에서 올린 영상), 아래 버튼을 한 번 눌러 지금 이 기기 데이터를 클라우드에 올려주세요 — 그래야 다른 기기에도 나타납니다.</p>
+  <p class="help-text">일정·비용·투어 정보·기타(영상)를 다른 기기와 실시간으로 자동 동기화합니다. 아무것도 입력하지 않으면 기본 코드로 자동 연결되어 별도 설정 없이 PC/모바일 간 동기화됩니다. 우리끼리만 쓰고 싶다면 원하는 코드를 만들어서 모든 기기에 똑같이 입력하세요. 동기화 켜지기 <b>전에</b> 이미 저장해둔 데이터가 있다면(예: 예전에 PC에서 올린 영상), 아래 버튼을 한 번 눌러 지금 이 기기 데이터를 클라우드에 올려주세요 — 그래야 다른 기기에도 나타납니다.</p>
   <input type="text" id="settings-trip-code" placeholder="비워두면 기본 코드로 자동 동기화">
   <div class="modal-actions" style="margin-top:8px;margin-bottom:14px">
     <button id="btn-sync-push-now" class="btn small">📤 지금 이 기기 데이터 업로드</button>
@@ -429,6 +432,6 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script src="app.js?v=49"></script>
+<script src="app.js?v=50"></script>
 </body>
 </html>
