@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="여행 플래너">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=38">
+<link rel="stylesheet" href="style.css?v=39">
 </head>
 <body>
 
@@ -135,9 +135,37 @@
   </div>
 </div>
 
+<!-- 오른쪽 자료함(바우처·여권 등 PDF/사진) 서랍 -->
+<button id="doc-drawer-tab" class="doc-drawer-tab" title="자료함">📎</button>
+<div id="doc-drawer-backdrop" class="doc-drawer-backdrop hidden"></div>
+<div id="doc-drawer" class="doc-drawer">
+  <div class="doc-drawer-header">
+    <h3>자료함</h3>
+    <button id="doc-drawer-close-btn" type="button" class="icon-btn" title="닫기">✕</button>
+  </div>
+  <p class="help-text">바우처·여권 사진 등 PDF/이미지를 올려두면 모든 기기에서 바로 보고 다운로드할 수 있어요.</p>
+  <div id="doc-list" class="doc-list"></div>
+  <input type="file" id="doc-upload-input" accept="application/pdf,image/*" class="hidden">
+  <button id="btn-doc-upload" type="button" class="btn primary doc-upload-btn">+ 자료 추가</button>
+</div>
+
 <!-- ============ 모달들 ============ -->
 
 <div id="modal-backdrop" class="modal-backdrop hidden"></div>
+
+<!-- 자료함 보기 -->
+<div id="modal-doc-viewer" class="modal doc-viewer-modal hidden">
+  <div class="modal-title-row">
+    <h3 id="doc-viewer-title">자료 보기</h3>
+    <button id="doc-viewer-close-btn" type="button" class="icon-btn" title="닫기">✕</button>
+  </div>
+  <div id="doc-viewer-body" class="doc-viewer-body"></div>
+  <div class="modal-actions">
+    <button id="doc-viewer-delete-btn" class="btn danger">삭제</button>
+    <div class="spacer"></div>
+    <a id="doc-viewer-download-btn" class="btn primary" target="_blank" rel="noopener">다운로드</a>
+  </div>
+</div>
 
 <!-- 일정 항목 편집 -->
 <div id="modal-entry" class="modal hidden">
@@ -383,6 +411,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script src="app.js?v=38"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-storage-compat.js"></script>
+<script src="app.js?v=39"></script>
 </body>
 </html>

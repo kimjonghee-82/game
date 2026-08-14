@@ -16,10 +16,11 @@ const STORAGE_KEYS = {
   fxCache: 'hanoi_trip_fx_cache_v1',
   otherVideos: 'hanoi_trip_other_videos_v1',
   translations: 'hanoi_trip_translations_v1',
+  documents: 'hanoi_trip_documents_v1',
 };
 
 /** 여러 기기 간 실시간 동기화 대상 (Firestore 로 미러링됨). 번역/음성 기록 등은 기기 로컬 전용. */
-const SYNC_STORAGE_KEYS = [STORAGE_KEYS.itinerary, STORAGE_KEYS.expenses, STORAGE_KEYS.reference, STORAGE_KEYS.otherVideos];
+const SYNC_STORAGE_KEYS = [STORAGE_KEYS.itinerary, STORAGE_KEYS.expenses, STORAGE_KEYS.reference, STORAGE_KEYS.otherVideos, STORAGE_KEYS.documents];
 
 const TRANSLATE_SOURCE_LANGS = ['자동 감지', '베트남어', '영어', '중국어', '일본어'];
 
@@ -274,6 +275,8 @@ function loadVideos() {
 function saveVideos(v) { save(STORAGE_KEYS.otherVideos, v); }
 function loadTranslations() { return load(STORAGE_KEYS.translations, []); }
 function saveTranslations(v) { save(STORAGE_KEYS.translations, v); }
+function loadDocuments() { return load(STORAGE_KEYS.documents, []); }
+function saveDocuments(v) { save(STORAGE_KEYS.documents, v); }
 
 /* ============================== 실시간 동기화 (Firebase Firestore) ==============================
    일정/비용/참고사항/기타(영상) 데이터를 기기 간 실시간으로 동기화합니다.
@@ -334,12 +337,14 @@ function attachSyncListener() {
     if (data.expenses !== undefined && JSON.stringify(data.expenses) !== JSON.stringify(loadExpenses())) { saveExpenses(data.expenses); changed = true; }
     if (data.reference !== undefined && JSON.stringify(data.reference) !== JSON.stringify(loadReference())) { saveReference(data.reference); changed = true; }
     if (data.otherVideos !== undefined && JSON.stringify(data.otherVideos) !== JSON.stringify(loadVideos())) { saveVideos(data.otherVideos); changed = true; }
+    if (data.documents !== undefined && JSON.stringify(data.documents) !== JSON.stringify(loadDocuments())) { saveDocuments(data.documents); changed = true; }
     syncApplyingRemote = false;
     if (changed) {
       renderItineraryGrid();
       renderExpenseTab();
       renderReferenceTab();
       renderOtherTab();
+      renderDocDrawer();
       toast('다른 기기의 변경사항을 동기화했어요');
     }
   }, (err) => {
@@ -355,6 +360,7 @@ function pushSyncNow() {
     expenses: loadExpenses(),
     reference: loadReference(),
     otherVideos: loadVideos(),
+    documents: loadDocuments(),
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
   }, { merge: true }).catch(e => { console.error('sync push failed', e); setSyncStatus('error'); throw e; });
 }
@@ -364,6 +370,111 @@ function scheduleSyncPush() {
   clearTimeout(syncPushTimer);
   syncPushTimer = setTimeout(pushSyncNow, 500);
 }
+
+/* ============================== 자료함 (바우처·여권 등 PDF/사진, Firebase Storage) ============================== */
+
+function formatBytes(n) {
+  if (!n && n !== 0) return '';
+  if (n < 1024) return n + 'B';
+  if (n < 1024 * 1024) return Math.round(n / 1024) + 'KB';
+  return (n / (1024 * 1024)).toFixed(1) + 'MB';
+}
+
+function renderDocDrawer() {
+  const docs = loadDocuments();
+  const list = document.getElementById('doc-list');
+  list.innerHTML = docs.length
+    ? docs.map(d => `
+      <div class="doc-item" data-id="${d.id}">
+        <div class="doc-icon">${d.type === 'application/pdf' ? '📄' : '🖼️'}</div>
+        <div class="doc-info">
+          <div class="doc-name">${escapeHtml(d.name)}</div>
+          <div class="doc-meta">${formatBytes(d.size)}</div>
+        </div>
+      </div>`).join('')
+    : '<div class="exp-empty">아래 버튼으로 자료를 추가해보세요</div>';
+}
+
+function openDocDrawer() {
+  document.getElementById('doc-drawer').classList.add('open');
+  document.getElementById('doc-drawer-backdrop').classList.remove('hidden');
+}
+function closeDocDrawer() {
+  document.getElementById('doc-drawer').classList.remove('open');
+  document.getElementById('doc-drawer-backdrop').classList.add('hidden');
+}
+document.getElementById('doc-drawer-tab').addEventListener('click', openDocDrawer);
+document.getElementById('doc-drawer-close-btn').addEventListener('click', closeDocDrawer);
+document.getElementById('doc-drawer-backdrop').addEventListener('click', closeDocDrawer);
+
+function uploadDocument(file) {
+  if (!window.firebase || !firebase.apps || !firebase.apps.length || !firebase.storage) {
+    toast('저장소 연결에 실패했습니다. 잠시 후 다시 시도해주세요');
+    return;
+  }
+  const docId = uid();
+  const path = `trips/${getTripCode()}/docs/${docId}-${file.name}`;
+  const ref = firebase.storage().ref(path);
+  toast('업로드 중...');
+  ref.put(file)
+    .then((snap) => snap.ref.getDownloadURL())
+    .then((url) => {
+      const docs = loadDocuments();
+      docs.push({ id: docId, name: file.name, type: file.type, size: file.size, url, path, uploadedAt: Date.now() });
+      saveDocuments(docs);
+      renderDocDrawer();
+      toast('업로드했습니다');
+    })
+    .catch((e) => {
+      console.error('doc upload failed', e);
+      toast('업로드에 실패했습니다. Storage 설정을 확인해주세요');
+    });
+}
+
+function deleteDocument(id) {
+  const docs = loadDocuments();
+  const d = docs.find((x) => x.id === id);
+  if (!d) return;
+  if (d.path && window.firebase && firebase.storage) {
+    firebase.storage().ref(d.path).delete().catch(() => {});
+  }
+  saveDocuments(docs.filter((x) => x.id !== id));
+  renderDocDrawer();
+}
+
+function openDocViewer(id) {
+  const d = loadDocuments().find((x) => x.id === id);
+  if (!d) return;
+  document.getElementById('doc-viewer-title').textContent = d.name;
+  const body = document.getElementById('doc-viewer-body');
+  body.innerHTML = d.type === 'application/pdf'
+    ? `<iframe src="${escapeHtml(d.url)}" title="${escapeHtml(d.name)}"></iframe>`
+    : `<img src="${escapeHtml(d.url)}" alt="${escapeHtml(d.name)}">`;
+  const dl = document.getElementById('doc-viewer-download-btn');
+  dl.href = d.url;
+  dl.setAttribute('download', d.name);
+  document.getElementById('doc-viewer-delete-btn').dataset.id = id;
+  openModal('modal-doc-viewer');
+}
+
+document.getElementById('doc-list').addEventListener('click', (e) => {
+  const item = e.target.closest('.doc-item');
+  if (item) openDocViewer(item.dataset.id);
+});
+document.getElementById('btn-doc-upload').addEventListener('click', () => {
+  document.getElementById('doc-upload-input').click();
+});
+document.getElementById('doc-upload-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (file) uploadDocument(file);
+});
+document.getElementById('doc-viewer-close-btn').addEventListener('click', () => closeModal('modal-doc-viewer'));
+document.getElementById('doc-viewer-delete-btn').addEventListener('click', (e) => {
+  if (!confirm('이 자료를 삭제할까요?')) return;
+  deleteDocument(e.target.dataset.id);
+  closeModal('modal-doc-viewer');
+});
 
 function seedDefaultsIfEmpty() {
   if (!loadReference()) {
@@ -2293,4 +2404,5 @@ renderExpenseTab();
 renderReferenceTab();
 renderPhrasesTab();
 renderOtherTab();
+renderDocDrawer();
 initSync();
