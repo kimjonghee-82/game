@@ -1185,14 +1185,16 @@ function renderOtherTab() {
       const embed = parseVideoEmbed(v.url);
       let embedHtml;
       if (embed && embed.type === 'file') {
-        embedHtml = `<video src="${escapeHtml(embed.src)}" controls preload="metadata"></video>`;
+        embedHtml = `<video src="${escapeHtml(embed.src)}" controls preload="metadata"></video>`
+          + `<button type="button" class="video-fullscreen-btn" data-fallback="${escapeHtml(embed.src)}" title="전체화면">⛶</button>`;
       } else if (embed && embed.type === 'youtube') {
         embedHtml = `<div class="video-thumb" data-yt-id="${embed.id}" data-title="${escapeHtml(v.title || '')}">
           <img src="https://img.youtube.com/vi/${embed.id}/hqdefault.jpg" alt="${escapeHtml(v.title || '')}" loading="lazy">
           <div class="video-play-btn">▶</div>
         </div>`;
       } else if (embed && embed.type === 'gdrive') {
-        embedHtml = `<iframe src="https://drive.google.com/file/d/${embed.id}/preview" title="${escapeHtml(v.title || '')}" loading="lazy" allow="autoplay" allowfullscreen></iframe>`;
+        embedHtml = `<iframe src="https://drive.google.com/file/d/${embed.id}/preview" title="${escapeHtml(v.title || '')}" loading="lazy" allow="autoplay" allowfullscreen></iframe>`
+          + `<button type="button" class="video-fullscreen-btn" data-fallback="https://drive.google.com/file/d/${embed.id}/view" title="전체화면">⛶</button>`;
       } else {
         embedHtml = `<div class="video-broken">유효한 영상 링크가 아닙니다</div>`;
       }
@@ -1238,13 +1240,32 @@ function goToAdjacentVideoRegion(delta) {
 attachSwipeNav(document.getElementById('tab-other'), goToAdjacentVideoRegion);
 
 document.getElementById('other-video-list').addEventListener('click', (e) => {
+  const fsBtn = e.target.closest('.video-fullscreen-btn');
+  if (fsBtn) {
+    const wrap = fsBtn.closest('.video-embed');
+    const media = wrap && wrap.querySelector('iframe, video');
+    const fallbackUrl = fsBtn.dataset.fallback;
+    const openFallback = () => { if (fallbackUrl) window.open(fallbackUrl, '_blank'); };
+    const fn = media && (media.requestFullscreen || media.webkitRequestFullscreen || media.webkitEnterFullscreen);
+    if (fn) {
+      try {
+        Promise.resolve(fn.call(media)).catch(openFallback);
+      } catch (err) {
+        openFallback();
+      }
+    } else {
+      openFallback();
+    }
+    return;
+  }
   const btn = e.target.closest('.video-edit-btn');
   if (btn) { openVideoModal(videoRegion, btn.dataset.id); return; }
   const thumb = e.target.closest('.video-thumb');
   if (thumb) {
     const id = thumb.dataset.ytId;
     const title = thumb.dataset.title;
-    thumb.outerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1" title="${title}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+    thumb.outerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1" title="${title}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`
+      + `<button type="button" class="video-fullscreen-btn" data-fallback="https://www.youtube.com/watch?v=${id}" title="전체화면">⛶</button>`;
   }
 });
 document.getElementById('btn-add-video').addEventListener('click', () => openVideoModal(videoRegion, null));
