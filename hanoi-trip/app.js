@@ -377,9 +377,14 @@ function scheduleSyncPush() {
 
 /* ============================== 자료함 (바우처·여권 등 PDF/사진, 구글 드라이브 링크) ============================== */
 
+function isDriveFolderLink(url) {
+  return /drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\//.test(url || '');
+}
+
 function parseDocLink(url) {
   const u = (url || '').trim();
   if (!u) return null;
+  if (isDriveFolderLink(u)) return null;
   const gd = /drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?id=)([a-zA-Z0-9_-]+)/.exec(u);
   if (gd) return { type: 'gdrive', id: gd[1] };
   if (/^https?:\/\//i.test(u)) return { type: 'file', src: u };
@@ -429,6 +434,7 @@ document.getElementById('doc-add-save-btn').addEventListener('click', () => {
   const link = document.getElementById('doc-add-link').value.trim();
   const kind = document.getElementById('doc-add-kind').value;
   if (!name) { toast('이름을 입력해주세요'); return; }
+  if (isDriveFolderLink(link)) { toast('폴더 링크는 지원되지 않아요. 폴더 안의 파일을 열어 그 파일의 공유 링크를 하나씩 추가해주세요'); return; }
   if (!parseDocLink(link)) { toast('올바른 링크를 입력해주세요'); return; }
   const docs = loadDocuments();
   docs.push({ id: uid(), name, url: link, kind, addedAt: Date.now() });
