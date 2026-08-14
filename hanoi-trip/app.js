@@ -709,9 +709,7 @@ function renderExpenseTab() {
   document.getElementById('expense-total-orig').textContent = Object.keys(origSums)
     .map(cur => `${fmtAmount(origSums[cur])} ${cur}`)
     .join(' · ');
-  document.getElementById('expense-total-label').textContent = expenseCumulativeView
-    ? `1~${dayIdx + 1}일차 누적 비용 (탭하여 이 날만 보기)`
-    : '이 날 비용 (탭하여 누적 비용 보기)';
+  document.getElementById('expense-total').classList.toggle('cumulative', expenseCumulativeView);
 
   allExpenses.filter(e => e.currency !== 'KRW' && !e.krw).forEach(e => refreshExpenseKrw(e.id));
 }

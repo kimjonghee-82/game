@@ -155,11 +155,12 @@ body{
 .grid-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
 
 /* ===== 비용 ===== */
-.expense-total{text-align:center;padding:18px 12px 20px;touch-action:pan-y;cursor:pointer;border-radius:12px;user-select:none}
+.expense-total{text-align:center;padding:8px 12px 10px;touch-action:pan-y;cursor:pointer;border-radius:12px;user-select:none}
 .expense-total:active{background:#fafafa}
-.expense-total-krw{font-size:32px;font-weight:bold;color:var(--ink)}
-.expense-total-orig{font-size:13px;color:var(--muted);margin-top:4px;min-height:16px}
-.expense-total-label{font-size:11.5px;color:var(--muted);margin-top:6px}
+.expense-total.cumulative{background:#eeeeee}
+.expense-total.cumulative:active{background:#e3e3e3}
+.expense-total-krw{font-size:24px;font-weight:bold;color:var(--ink)}
+.expense-total-orig{font-size:12px;color:var(--muted);margin-top:2px;min-height:15px}
 
 .expense-list{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;padding-bottom:84px;touch-action:pan-y;flex:1 1 auto}
 .exp-empty{padding:26px 12px;text-align:center;color:var(--muted);font-size:13.5px}
