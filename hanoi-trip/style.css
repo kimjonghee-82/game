@@ -386,7 +386,7 @@ body{
 .map-row .btn{flex-shrink:0}
 
 .toast{
-  position:fixed;bottom:calc(24px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
+  position:fixed;top:calc(104px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
   background:#2b2b28;color:#fff;padding:10px 18px;border-radius:20px;
   font-size:13px;z-index:500;box-shadow:0 4px 16px rgba(0,0,0,.3);
   max-width:90%;text-align:center;
