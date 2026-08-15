@@ -830,14 +830,30 @@ document.getElementById('modal-backdrop').addEventListener('click', () => {
 
 /* -------------------------------- 탭 전환 -------------------------------- */
 
+const ACTIVE_TAB_KEY = 'hanoi_trip_active_tab_v1';
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    localStorage.setItem(ACTIVE_TAB_KEY, btn.dataset.tab);
   });
 });
+
+// 새로고침(당겨서 새로고침 포함) 후에도 무조건 첫 탭(일정)이 아니라 마지막으로 보던 탭이 그대로 보이도록 복원
+(function restoreActiveTab() {
+  const saved = localStorage.getItem(ACTIVE_TAB_KEY);
+  if (!saved) return;
+  const btn = document.querySelector(`.tab-btn[data-tab="${saved}"]`);
+  const panel = document.getElementById('tab-' + saved);
+  if (!btn || !panel) return;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  panel.classList.add('active');
+})();
 
 /* ============================== 날짜 이동(하루 단위 보기) ============================== */
 
@@ -1339,8 +1355,8 @@ function orderedRegionKeys(dataObj) {
   return [...ordered, ...extra];
 }
 
-let refGroup = 'spots'; // 'wishlist' | 'spots'
-let refRegion = 'hanoi';
+let refGroup = 'wishlist'; // 'wishlist' | 'spots'
+let refRegion = 'wish_hanoi_food';
 
 function getWishlistRegionKeys() { return REF_WISHLIST_CATEGORIES.map(c => c.key); }
 /** 명소는 하노이/사파를 기본으로 하되, "장소" 필드로 직접 입력한 커스텀 도시도 뒤에 붙음 */
