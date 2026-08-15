@@ -454,6 +454,7 @@ function attachSyncListener() {
     if (snap.metadata.hasPendingWrites || !snap.exists) return;
     const data = snap.data();
     syncApplyingRemote = true;
+    document.getElementById('doc-drawer-tab').classList.add('syncing');
     let changed = false;
     if (data.itinerary !== undefined && JSON.stringify(data.itinerary) !== JSON.stringify(loadItinerary())) { saveItinerary(data.itinerary); changed = true; }
     if (data.expenses !== undefined && JSON.stringify(data.expenses) !== JSON.stringify(loadExpenses())) { saveExpenses(data.expenses); changed = true; }
@@ -461,13 +462,14 @@ function attachSyncListener() {
     if (data.otherVideos !== undefined && JSON.stringify(data.otherVideos) !== JSON.stringify(loadVideos())) { saveVideos(data.otherVideos); changed = true; }
     if (data.documents !== undefined && JSON.stringify(data.documents) !== JSON.stringify(loadDocuments())) { saveDocuments(data.documents); changed = true; }
     syncApplyingRemote = false;
+    document.getElementById('doc-drawer-tab').classList.remove('syncing');
     if (changed) {
       renderItineraryGrid();
       renderExpenseTab();
       renderReferenceTab();
       renderOtherTab();
       renderDocDrawer();
-      toast('다른 기기의 변경사항을 동기화했어요');
+      document.getElementById('doc-drawer-tab').classList.add('sync-alert');
     }
   }, (err) => {
     console.error('sync listen error', err);
@@ -555,6 +557,7 @@ function renderDocDrawer() {
 function openDocDrawer() {
   document.getElementById('doc-drawer').classList.add('open');
   document.getElementById('doc-drawer-backdrop').classList.remove('hidden');
+  document.getElementById('doc-drawer-tab').classList.remove('sync-alert');
 }
 function closeDocDrawer() {
   document.getElementById('doc-drawer').classList.remove('open');
