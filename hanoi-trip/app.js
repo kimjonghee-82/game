@@ -419,6 +419,9 @@ let syncDb = null;
 let syncUnsub = null;
 let syncPushTimer = null;
 let syncApplyingRemote = false;
+/** 로컬에서 저장했지만 아직 서버로 전송(push) 성공하지 못한 변경사항이 있는지. true인 동안엔
+    원격에서 들어오는 데이터로 로컬을 덮어쓰지 않음 (네트워크 끊김 중 저장한 내용이 사라지는 것 방지). */
+let syncHasPendingLocalChange = false;
 
 function getTripCode() {
   const s = loadSettings();
@@ -452,6 +455,12 @@ function attachSyncListener() {
   syncUnsub = ref.onSnapshot((snap) => {
     setSyncStatus('synced');
     if (snap.metadata.hasPendingWrites || !snap.exists) return;
+    if (syncHasPendingLocalChange) {
+      // 이 기기에 아직 서버로 못 올라간 변경사항이 있음 — 방금 들어온 원격 데이터로 덮어쓰면
+      // 그 변경사항이 사라지므로, 대신 로컬 데이터를 다시 서버로 올려서 해결함.
+      scheduleSyncPush();
+      return;
+    }
     const data = snap.data();
     syncApplyingRemote = true;
     document.getElementById('doc-drawer-tab').classList.add('syncing');
@@ -486,14 +495,23 @@ function pushSyncNow() {
     otherVideos: loadVideos(),
     documents: loadDocuments(),
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-  }, { merge: true }).catch(e => { console.error('sync push failed', e); setSyncStatus('error'); throw e; });
+  }, { merge: true }).then(() => {
+    syncHasPendingLocalChange = false;
+  }).catch(e => { console.error('sync push failed', e); setSyncStatus('error'); throw e; });
 }
 
 function scheduleSyncPush() {
-  if (syncApplyingRemote || !syncDb) return;
+  if (syncApplyingRemote) return;
+  syncHasPendingLocalChange = true;
+  if (!syncDb) return;
   clearTimeout(syncPushTimer);
   syncPushTimer = setTimeout(pushSyncNow, 500);
 }
+
+// 네트워크가 끊겼다가 다시 연결되면, 못 올라간 로컬 변경사항이 있는지 확인해서 바로 재전송 시도
+window.addEventListener('online', () => {
+  if (syncHasPendingLocalChange) scheduleSyncPush();
+});
 
 /* ============================== 자료함 (바우처·여권 등 PDF/사진, 구글 드라이브 링크) ============================== */
 
