@@ -215,6 +215,7 @@ body{
 
 .expense-list{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;padding-bottom:84px;touch-action:pan-y;flex:1 1 auto}
 .exp-empty{padding:26px 12px;text-align:center;color:var(--muted);font-size:13.5px}
+.exp-out-of-range-title{padding:12px 14px 6px;font-size:12px;font-weight:bold;color:var(--accent)}
 .exp-row{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer}
 .exp-row:last-child{border-bottom:none}
 .exp-row:hover{background:#fafafa}

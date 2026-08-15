@@ -1153,27 +1153,35 @@ function deleteExpense(expenseId) {
 
 let expenseCumulativeView = false;
 
+function renderExpenseRow(exp) {
+  return `
+    <div class="exp-row" data-id="${exp.id}">
+      <div class="exp-icon">${EXPENSE_CATEGORY_ICONS[exp.category] || '📦'}</div>
+      <div class="exp-main">
+        <div class="exp-title">${escapeHtml(exp.place || '')}</div>
+        <div class="exp-time">${formatTimeAmPm(exp.time)}${exp.memo ? ' · ' + escapeHtml(exp.memo) : ''}</div>
+      </div>
+      <div class="exp-amounts">
+        <div class="exp-krw">${exp.currency === 'KRW' ? fmtAmount(exp.amount) + '원' : (exp.krw ? fmtAmount(Math.round(exp.krw)) + '원' : '조회중')}</div>
+        ${exp.currency !== 'KRW' ? `<div class="exp-orig">${fmtAmount(exp.amount)} ${exp.currency}</div>` : ''}
+      </div>
+    </div>`;
+}
+
 function renderExpenseTab() {
   renderDayNav('exp');
   const allExpenses = loadExpenses();
-  const dayExpenses = allExpenses.filter(e => e.date === viewDate).sort((a, b) => a.time.localeCompare(b.time));
-  const list = document.getElementById('expense-list');
-  list.innerHTML = dayExpenses.length
-    ? dayExpenses.map(exp => `
-      <div class="exp-row" data-id="${exp.id}">
-        <div class="exp-icon">${EXPENSE_CATEGORY_ICONS[exp.category] || '📦'}</div>
-        <div class="exp-main">
-          <div class="exp-title">${escapeHtml(exp.place || '')}</div>
-          <div class="exp-time">${formatTimeAmPm(exp.time)}${exp.memo ? ' · ' + escapeHtml(exp.memo) : ''}</div>
-        </div>
-        <div class="exp-amounts">
-          <div class="exp-krw">${exp.currency === 'KRW' ? fmtAmount(exp.amount) + '원' : (exp.krw ? fmtAmount(Math.round(exp.krw)) + '원' : '조회중')}</div>
-          ${exp.currency !== 'KRW' ? `<div class="exp-orig">${fmtAmount(exp.amount)} ${exp.currency}</div>` : ''}
-        </div>
-      </div>`).join('')
-    : '<div class="exp-empty">아래 버튼으로 비용을 추가해보세요</div>';
-
   const dates = getTripDates();
+  const dayExpenses = allExpenses.filter(e => e.date === viewDate).sort((a, b) => a.time.localeCompare(b.time));
+  // 여행 기간 밖의 날짜로 잘못 저장된 비용(예: 영수증 사진에서 날짜를 잘못 인식한 경우)은
+  // 어떤 날짜로 이동해도 보이지 않으므로, 놓치지 않도록 따로 눈에 띄게 보여줌.
+  const outOfRangeExpenses = allExpenses.filter(e => dates.indexOf(e.date) === -1);
+  const list = document.getElementById('expense-list');
+  list.innerHTML = (dayExpenses.length ? dayExpenses.map(renderExpenseRow).join('') : '<div class="exp-empty">아래 버튼으로 비용을 추가해보세요</div>')
+    + (outOfRangeExpenses.length
+      ? `<div class="exp-out-of-range-title">⚠️ 날짜 범위 밖 비용 (탭해서 날짜 수정)</div>${outOfRangeExpenses.map(renderExpenseRow).join('')}`
+      : '');
+
   const dayIdx = dates.indexOf(viewDate);
   const totalExpenses = expenseCumulativeView
     ? allExpenses.filter(e => dates.indexOf(e.date) !== -1 && dates.indexOf(e.date) <= dayIdx)
@@ -2112,7 +2120,7 @@ document.getElementById('expense-photo-input').addEventListener('change', async 
   if (!file) return;
   const result = await analyzePhoto(file, document.getElementById('expense-photo-status'));
 
-  document.getElementById('expense-date').value = result.date || viewDate || getTripDates()[0];
+  document.getElementById('expense-date').value = (result.date && getTripDates().includes(result.date)) ? result.date : (viewDate || getTripDates()[0]);
   document.getElementById('expense-time').value = result.time || document.getElementById('expense-time').value || '12:00';
   const place = result.vendor || result.place || result.description;
   if (place) document.getElementById('expense-place').value = place;
