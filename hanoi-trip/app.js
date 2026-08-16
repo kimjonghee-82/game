@@ -419,9 +419,55 @@ let syncDb = null;
 let syncUnsub = null;
 let syncPushTimer = null;
 let syncApplyingRemote = false;
-/** 로컬에서 저장했지만 아직 서버로 전송(push) 성공하지 못한 변경사항이 있는지. true인 동안엔
-    원격에서 들어오는 데이터로 로컬을 덮어쓰지 않음 (네트워크 끊김 중 저장한 내용이 사라지는 것 방지). */
-let syncHasPendingLocalChange = false;
+
+const SYNC_BASELINE_KEY = 'hanoi_trip_sync_baseline_v1';
+function loadSyncBaseline() { return load(SYNC_BASELINE_KEY, {}); }
+function saveSyncBaseline(v) { save(SYNC_BASELINE_KEY, v); }
+
+/** local/remote 둘 다 있는 항목 중 어느 쪽을 쓸지 고름. baseline(마지막으로 동기화됐던 상태)과
+    비교해서 바뀐 쪽을 우선하고, 둘 다 바뀌었으면(동시 편집) 이 기기 쪽을 우선함. */
+function pickNewerItem(localItem, remoteItem, baselineItem) {
+  const localChanged = JSON.stringify(localItem) !== JSON.stringify(baselineItem);
+  const remoteChanged = JSON.stringify(remoteItem) !== JSON.stringify(baselineItem);
+  if (localChanged && !remoteChanged) return localItem;
+  if (!localChanged && remoteChanged) return remoteItem;
+  return localItem;
+}
+
+/** id 기준 3-way 병합. baseline에 있었는데 한쪽에만 없으면 "그쪽에서 삭제한 것"으로 보고
+    되살리지 않음. baseline에 없었는데 한쪽에만 있으면 "새로 추가한 것"으로 보고 반영함.
+    이 방식으로 "동기화 중 네트워크가 끊겨서 로컬 변경이 나중에 들어온 데이터에 덮어써지는" 문제와
+    "다른 기기에서 지운 게 되살아나는" 문제를 둘 다 방지함. */
+function mergeArrayThreeWay(local, remote, baseline) {
+  local = Array.isArray(local) ? local : [];
+  remote = Array.isArray(remote) ? remote : [];
+  baseline = Array.isArray(baseline) ? baseline : [];
+  const localMap = new Map(local.filter(x => x && x.id).map(x => [x.id, x]));
+  const remoteMap = new Map(remote.filter(x => x && x.id).map(x => [x.id, x]));
+  const baselineMap = new Map(baseline.filter(x => x && x.id).map(x => [x.id, x]));
+  const allIds = new Set([...localMap.keys(), ...remoteMap.keys()]);
+  const result = [];
+  allIds.forEach(id => {
+    const l = localMap.get(id), r = remoteMap.get(id), b = baselineMap.get(id);
+    if (l && r) {
+      result.push(pickNewerItem(l, r, b));
+    } else if (l && !r) {
+      if (!b) result.push(l);
+    } else if (!l && r) {
+      if (!b) result.push(r);
+    }
+  });
+  return result;
+}
+
+/** 지역별로 나뉜 데이터(투어 정보, 기타 영상)는 지역 키마다 배열을 3-way 병합함 */
+function mergeRegionMapThreeWay(local, remote, baseline) {
+  local = local || {}; remote = remote || {}; baseline = baseline || {};
+  const keys = new Set([...Object.keys(local), ...Object.keys(remote), ...Object.keys(baseline)]);
+  const result = {};
+  keys.forEach(k => { result[k] = mergeArrayThreeWay(local[k], remote[k], baseline[k]); });
+  return result;
+}
 
 function getTripCode() {
   const s = loadSettings();
@@ -447,6 +493,49 @@ function initSync() {
   }
 }
 
+/** 원격에서 들어온 데이터(data)를 로컬 데이터와 3-way 병합해서 저장하고, 화면을 새로고침함.
+    병합 결과가 원격 데이터와 다르면(예: 로컬에만 있던 새 항목을 되살렸거나 원격의 삭제를 반영했다면)
+    true를 반환 — 이 경우 병합 결과를 서버에도 다시 올려야 함. */
+function applyRemoteMerge(data) {
+  const baseline = loadSyncBaseline();
+  const mergedItinerary = mergeArrayThreeWay(loadItinerary(), data.itinerary, baseline.itinerary);
+  const mergedExpenses = mergeArrayThreeWay(loadExpenses(), data.expenses, baseline.expenses);
+  const mergedReference = mergeRegionMapThreeWay(loadReference(), data.reference, baseline.reference);
+  const mergedVideos = mergeRegionMapThreeWay(loadVideos(), data.otherVideos, baseline.otherVideos);
+  const mergedDocuments = mergeArrayThreeWay(loadDocuments(), data.documents, baseline.documents);
+
+  const localChanged = JSON.stringify(mergedItinerary) !== JSON.stringify(loadItinerary())
+    || JSON.stringify(mergedExpenses) !== JSON.stringify(loadExpenses())
+    || JSON.stringify(mergedReference) !== JSON.stringify(loadReference())
+    || JSON.stringify(mergedVideos) !== JSON.stringify(loadVideos())
+    || JSON.stringify(mergedDocuments) !== JSON.stringify(loadDocuments());
+  const remoteStale = JSON.stringify(mergedItinerary) !== JSON.stringify(data.itinerary || [])
+    || JSON.stringify(mergedExpenses) !== JSON.stringify(data.expenses || [])
+    || JSON.stringify(mergedReference) !== JSON.stringify(data.reference || {})
+    || JSON.stringify(mergedVideos) !== JSON.stringify(data.otherVideos || {})
+    || JSON.stringify(mergedDocuments) !== JSON.stringify(data.documents || []);
+
+  syncApplyingRemote = true;
+  saveItinerary(mergedItinerary);
+  saveExpenses(mergedExpenses);
+  saveReference(mergedReference);
+  saveVideos(mergedVideos);
+  saveDocuments(mergedDocuments);
+  syncApplyingRemote = false;
+
+  saveSyncBaseline({ itinerary: mergedItinerary, expenses: mergedExpenses, reference: mergedReference, otherVideos: mergedVideos, documents: mergedDocuments });
+
+  if (localChanged) {
+    renderItineraryGrid();
+    renderExpenseTab();
+    renderReferenceTab();
+    renderOtherTab();
+    renderDocDrawer();
+    document.getElementById('doc-drawer-tab').classList.add('sync-alert');
+  }
+  return remoteStale;
+}
+
 function attachSyncListener() {
   if (!syncDb) return;
   if (syncUnsub) { syncUnsub(); syncUnsub = null; }
@@ -455,31 +544,10 @@ function attachSyncListener() {
   syncUnsub = ref.onSnapshot((snap) => {
     setSyncStatus('synced');
     if (snap.metadata.hasPendingWrites || !snap.exists) return;
-    if (syncHasPendingLocalChange) {
-      // 이 기기에 아직 서버로 못 올라간 변경사항이 있음 — 방금 들어온 원격 데이터로 덮어쓰면
-      // 그 변경사항이 사라지므로, 대신 로컬 데이터를 다시 서버로 올려서 해결함.
-      scheduleSyncPush();
-      return;
-    }
-    const data = snap.data();
-    syncApplyingRemote = true;
     document.getElementById('doc-drawer-tab').classList.add('syncing');
-    let changed = false;
-    if (data.itinerary !== undefined && JSON.stringify(data.itinerary) !== JSON.stringify(loadItinerary())) { saveItinerary(data.itinerary); changed = true; }
-    if (data.expenses !== undefined && JSON.stringify(data.expenses) !== JSON.stringify(loadExpenses())) { saveExpenses(data.expenses); changed = true; }
-    if (data.reference !== undefined && JSON.stringify(data.reference) !== JSON.stringify(loadReference())) { saveReference(data.reference); changed = true; }
-    if (data.otherVideos !== undefined && JSON.stringify(data.otherVideos) !== JSON.stringify(loadVideos())) { saveVideos(data.otherVideos); changed = true; }
-    if (data.documents !== undefined && JSON.stringify(data.documents) !== JSON.stringify(loadDocuments())) { saveDocuments(data.documents); changed = true; }
-    syncApplyingRemote = false;
+    const remoteStale = applyRemoteMerge(snap.data());
     document.getElementById('doc-drawer-tab').classList.remove('syncing');
-    if (changed) {
-      renderItineraryGrid();
-      renderExpenseTab();
-      renderReferenceTab();
-      renderOtherTab();
-      renderDocDrawer();
-      document.getElementById('doc-drawer-tab').classList.add('sync-alert');
-    }
+    if (remoteStale) scheduleSyncPush();
   }, (err) => {
     console.error('sync listen error', err);
     setSyncStatus('error');
@@ -488,29 +556,30 @@ function attachSyncListener() {
 
 function pushSyncNow() {
   if (!syncDb) return Promise.reject(new Error('동기화가 연결되지 않았습니다'));
-  return syncDb.collection('trips').doc(getTripCode()).set({
-    itinerary: loadItinerary(),
-    expenses: loadExpenses(),
-    reference: loadReference(),
-    otherVideos: loadVideos(),
-    documents: loadDocuments(),
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-  }, { merge: true }).then(() => {
-    syncHasPendingLocalChange = false;
+  const docRef = syncDb.collection('trips').doc(getTripCode());
+  return docRef.get().then(snap => {
+    const remote = snap.exists ? snap.data() : {};
+    applyRemoteMerge(remote); // 서버에 올리기 전에 먼저 서버 최신 상태와 병합해서 로컬을 정리
+    return docRef.set({
+      itinerary: loadItinerary(),
+      expenses: loadExpenses(),
+      reference: loadReference(),
+      otherVideos: loadVideos(),
+      documents: loadDocuments(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
   }).catch(e => { console.error('sync push failed', e); setSyncStatus('error'); throw e; });
 }
 
 function scheduleSyncPush() {
-  if (syncApplyingRemote) return;
-  syncHasPendingLocalChange = true;
-  if (!syncDb) return;
+  if (syncApplyingRemote || !syncDb) return;
   clearTimeout(syncPushTimer);
   syncPushTimer = setTimeout(pushSyncNow, 500);
 }
 
-// 네트워크가 끊겼다가 다시 연결되면, 못 올라간 로컬 변경사항이 있는지 확인해서 바로 재전송 시도
+// 네트워크가 끊겼다가 다시 연결되면 서버와 다시 병합·동기화 시도
 window.addEventListener('online', () => {
-  if (syncHasPendingLocalChange) scheduleSyncPush();
+  if (syncDb) scheduleSyncPush();
 });
 
 /* ============================== 자료함 (바우처·여권 등 PDF/사진, 구글 드라이브 링크) ============================== */
