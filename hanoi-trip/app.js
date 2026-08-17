@@ -495,7 +495,11 @@ function initSync() {
 
 /** 원격에서 들어온 데이터(data)를 로컬 데이터와 3-way 병합해서 저장하고, 화면을 새로고침함.
     병합 결과가 원격 데이터와 다르면(예: 로컬에만 있던 새 항목을 되살렸거나 원격의 삭제를 반영했다면)
-    true를 반환 — 이 경우 병합 결과를 서버에도 다시 올려야 함. */
+    true를 반환 — 이 경우 병합 결과를 서버에도 다시 올려야 함.
+    baseline은 반드시 "서버가 실제로 확인해준 데이터(data)"로만 갱신함 — 아직 서버에 올라갔는지
+    확인 안 된 병합 결과(merged)로 앞서 갱신하면, 이후 push가 실패하거나 지연됐을 때 baseline이
+    실제보다 앞서가 버려서 "방금 추가한 항목이 다음 병합에서 삭제된 것처럼 사라지거나" 반대로
+    "방금 삭제한 항목이 되살아나는" 문제가 생김. */
 function applyRemoteMerge(data) {
   const baseline = loadSyncBaseline();
   const mergedItinerary = mergeArrayThreeWay(loadItinerary(), data.itinerary, baseline.itinerary);
@@ -523,7 +527,13 @@ function applyRemoteMerge(data) {
   saveDocuments(mergedDocuments);
   syncApplyingRemote = false;
 
-  saveSyncBaseline({ itinerary: mergedItinerary, expenses: mergedExpenses, reference: mergedReference, otherVideos: mergedVideos, documents: mergedDocuments });
+  saveSyncBaseline({
+    itinerary: data.itinerary || [],
+    expenses: data.expenses || [],
+    reference: data.reference || {},
+    otherVideos: data.otherVideos || {},
+    documents: data.documents || [],
+  });
 
   if (localChanged) {
     renderItineraryGrid();
@@ -560,14 +570,15 @@ function pushSyncNow() {
   return docRef.get().then(snap => {
     const remote = snap.exists ? snap.data() : {};
     applyRemoteMerge(remote); // 서버에 올리기 전에 먼저 서버 최신 상태와 병합해서 로컬을 정리
-    return docRef.set({
+    const payload = {
       itinerary: loadItinerary(),
       expenses: loadExpenses(),
       reference: loadReference(),
       otherVideos: loadVideos(),
       documents: loadDocuments(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
+    };
+    return docRef.set({ ...payload, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
+      .then(() => saveSyncBaseline(payload)); // 서버에 실제로 반영된 걸 확인한 뒤에만 baseline을 이 상태로 갱신
   }).catch(e => { console.error('sync push failed', e); setSyncStatus('error'); throw e; });
 }
 
