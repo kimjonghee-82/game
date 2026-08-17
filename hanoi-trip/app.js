@@ -1034,6 +1034,7 @@ function renderTimelineItem(e) {
     <div class="tl-content">
       <div class="tl-title">${escapeHtml(title)}${e.photoThumb ? '<span class="tl-photo-mark">📷</span>' : ''}${costHtml}</div>
       ${subChips.length ? `<div class="tl-sub">${subChips.join('')}</div>` : ''}
+      ${e.memo ? `<div class="tl-memo">${escapeHtml(e.memo)}</div>` : ''}
     </div>
   </div>`;
 }
@@ -1071,7 +1072,7 @@ function openEntryModal(entryId, prefill) {
   document.getElementById('entry-photo-status').textContent = '';
   pendingEntryPhoto = null;
 
-  let entry = { date: viewDate || getTripDates()[0], time: '09:00', text: '', vendor: '', place: '', mapUrl: '', category: '이동', lodging: false, expenseId: null, photoThumb: null, photoMeta: null };
+  let entry = { date: viewDate || getTripDates()[0], time: '09:00', text: '', vendor: '', place: '', mapUrl: '', category: '이동', memo: '', lodging: false, expenseId: null, photoThumb: null, photoMeta: null };
   if (!isNew) {
     entry = { ...entry, ...(loadItinerary().find(x => x.id === entryId) || {}) };
   } else if (prefill) {
@@ -1087,6 +1088,7 @@ function openEntryModal(entryId, prefill) {
   document.getElementById('entry-place').value = entry.place || '';
   document.getElementById('entry-map-url').value = entry.mapUrl || '';
   document.getElementById('entry-category').value = entry.category || '이동';
+  document.getElementById('entry-memo').value = entry.memo || '';
   document.getElementById('entry-lodging').checked = !!entry.lodging;
 
   const linkedExpense = entry.expenseId ? loadExpenses().find(x => x.id === entry.expenseId) : null;
@@ -1168,6 +1170,7 @@ document.getElementById('entry-save-btn').addEventListener('click', () => {
   const place = document.getElementById('entry-place').value.trim();
   const mapUrl = document.getElementById('entry-map-url').value.trim();
   const category = document.getElementById('entry-category').value;
+  const memo = document.getElementById('entry-memo').value.trim();
   const lodging = document.getElementById('entry-lodging').checked;
   const costAmount = document.getElementById('entry-cost-amount').value;
   const costCurrency = document.getElementById('entry-cost-currency').value;
@@ -1177,10 +1180,10 @@ document.getElementById('entry-save-btn').addEventListener('click', () => {
 
   let entry = entries.find(x => x.id === id);
   if (!entry) {
-    entry = { id: uid(), date, time, text, vendor, place, mapUrl, category, lodging, expenseId: null, photoThumb: null, photoMeta: null };
+    entry = { id: uid(), date, time, text, vendor, place, mapUrl, category, memo, lodging, expenseId: null, photoThumb: null, photoMeta: null };
     entries.push(entry);
   } else {
-    Object.assign(entry, { date, time, text, vendor, place, mapUrl, category, lodging });
+    Object.assign(entry, { date, time, text, vendor, place, mapUrl, category, memo, lodging });
   }
   if (pendingEntryPhoto) {
     entry.photoThumb = pendingEntryPhoto.thumb;
