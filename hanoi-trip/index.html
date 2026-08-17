@@ -199,13 +199,6 @@
   <label>날짜 <select id="entry-date"></select></label>
   <label><span id="entry-time-label-text">현지 시간</span> <input type="time" id="entry-time"></label>
   <div class="kr-time-text" id="entry-kr-time"></div>
-  <label>상호(장소명) <input type="text" id="entry-vendor" placeholder="예: 캣캣힐스, 르퍼폼 호텔"></label>
-  <label>내용 <input type="text" id="entry-text" placeholder="예: 집 출발"></label>
-  <label>장소/주소 <input type="text" id="entry-place" placeholder="예: 사파, 라오까이"></label>
-  <div class="map-row">
-    <input type="text" id="entry-map-url" placeholder="구글 지도 링크(비우면 상호/장소로 자동 생성)">
-    <button id="entry-map-open-btn" type="button" class="btn small ghost">🗺️ 지도 열기</button>
-  </div>
   <label>분류
     <select id="entry-category">
       <option value="이동">이동</option>
@@ -216,8 +209,9 @@
       <option value="기타">기타</option>
     </select>
   </label>
+  <label>상호(장소명) <input type="text" id="entry-vendor" placeholder="예: 캣캣힐스, 르퍼폼 호텔"></label>
+  <label>내용 <input type="text" id="entry-text" placeholder="예: 집 출발"></label>
   <label>메모 <input type="text" id="entry-memo"></label>
-  <label class="checkbox-row"><input type="checkbox" id="entry-lodging"> 이 날의 숙소 정보로 표시</label>
   <fieldset class="cost-fieldset">
     <legend>비용 (선택)</legend>
     <div class="cost-row">
@@ -229,6 +223,12 @@
       </select>
     </div>
   </fieldset>
+  <label>장소/주소 <input type="text" id="entry-place" placeholder="예: 사파, 라오까이"></label>
+  <div class="map-row">
+    <input type="text" id="entry-map-url" placeholder="구글 지도 링크(비우면 상호/장소로 자동 생성)">
+    <button id="entry-map-open-btn" type="button" class="btn small ghost">🗺️ 지도 열기</button>
+  </div>
+  <label class="checkbox-row"><input type="checkbox" id="entry-lodging"> 이 날의 숙소 정보로 표시</label>
   <div class="modal-actions">
     <button id="entry-delete-btn" class="btn danger">삭제</button>
     <div class="spacer"></div>
