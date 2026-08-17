@@ -1062,6 +1062,7 @@ document.getElementById('itinerary-day-view').addEventListener('click', (e) => {
 document.getElementById('btn-add-entry').addEventListener('click', () => openEntryModal(null, { date: viewDate }));
 
 let pendingEntryPhoto = null; // {thumb, meta} set by "사진으로 채우기", applied on save
+let entryPhotoDetectedDate = null; // 사진에서 인식된 날짜 — 선택된 날짜와 다르면 저장 시 확인창을 띄우기 위해 기억해둠
 
 function openEntryModal(entryId, prefill) {
   const isNew = !entryId;
@@ -1071,6 +1072,7 @@ function openEntryModal(entryId, prefill) {
   document.getElementById('entry-delete-btn').classList.toggle('hidden', isNew);
   document.getElementById('entry-photo-status').textContent = '';
   pendingEntryPhoto = null;
+  entryPhotoDetectedDate = null;
 
   let entry = { date: viewDate || getTripDates()[0], time: '09:00', text: '', vendor: '', place: '', mapUrl: '', category: '이동', memo: '', lodging: false, expenseId: null, photoThumb: null, photoMeta: null };
   if (!isNew) {
@@ -1177,6 +1179,10 @@ document.getElementById('entry-save-btn').addEventListener('click', () => {
 
   if (!text) { toast('내용을 입력해주세요'); return; }
   if (!time) { toast('시간을 입력해주세요'); return; }
+  if (entryPhotoDetectedDate && entryPhotoDetectedDate !== date) {
+    const ok = confirm(`⚠️ 사진에서 인식된 날짜는 ${entryPhotoDetectedDate} 인데, 현재 선택된 날짜는 ${date} 입니다.\n이대로 저장할까요? (취소하면 날짜를 다시 확인할 수 있어요)`);
+    if (!ok) return;
+  }
 
   let entry = entries.find(x => x.id === id);
   if (!entry) {
@@ -1193,6 +1199,7 @@ document.getElementById('entry-save-btn').addEventListener('click', () => {
 
   syncEntryCost(entry, costAmount ? Number(costAmount) : null, costCurrency, vendor || text);
   saveItinerary(entries);
+  entryPhotoDetectedDate = null;
   renderItineraryGrid();
   renderExpenseTab();
   closeModal('modal-entry');
@@ -1314,11 +1321,14 @@ document.getElementById('expense-list').addEventListener('click', (e) => {
 
 document.getElementById('btn-add-expense').addEventListener('click', () => openExpenseModal(null));
 
+let expensePhotoDetectedDate = null; // 영수증 사진에서 인식된 날짜 — 선택된 날짜와 다르면 저장 시 확인창을 띄우기 위해 기억해둠
+
 function openExpenseModal(expenseId) {
   const isNew = !expenseId;
   document.getElementById('expense-modal-title').textContent = isNew ? '비용 추가' : '비용 수정';
   document.getElementById('expense-id').value = expenseId || '';
   document.getElementById('expense-delete-btn').classList.toggle('hidden', isNew);
+  expensePhotoDetectedDate = null;
 
   let exp = { date: viewDate || getTripDates()[0], time: '12:00', place: '', category: '식사', amount: '', currency: 'VND', memo: '' };
   if (!isNew) exp = loadExpenses().find(x => x.id === expenseId) || exp;
@@ -1349,6 +1359,10 @@ document.getElementById('expense-save-btn').addEventListener('click', () => {
 
   if (!place) { toast('장소/항목을 입력해주세요'); return; }
   if (!amount) { toast('금액을 입력해주세요'); return; }
+  if (expensePhotoDetectedDate && expensePhotoDetectedDate !== date) {
+    const ok = confirm(`⚠️ 영수증에서 인식된 날짜는 ${expensePhotoDetectedDate} 인데, 현재 선택된 날짜는 ${date} 입니다.\n이대로 저장할까요? (취소하면 날짜를 다시 확인할 수 있어요)`);
+    if (!ok) return;
+  }
 
   let exp = expenses.find(x => x.id === id);
   if (!exp) {
@@ -1357,6 +1371,7 @@ document.getElementById('expense-save-btn').addEventListener('click', () => {
   }
   Object.assign(exp, { date, time, place, category, amount, currency, memo, krw: currency === 'KRW' ? amount : exp.krw });
   saveExpenses(expenses);
+  expensePhotoDetectedDate = null;
   if (currency !== 'KRW') refreshExpenseKrw(exp.id, true);
   renderExpenseTab();
   renderItineraryGrid();
@@ -2199,7 +2214,9 @@ document.getElementById('entry-photo-input').addEventListener('change', async (e
   if (!file) return;
   const result = await analyzePhoto(file, document.getElementById('entry-photo-status'));
 
+  entryPhotoDetectedDate = result.date || null;
   if (result.date && getTripDates().includes(result.date)) document.getElementById('entry-date').value = result.date;
+  else if (result.date) toast(`⚠️ 사진에서 인식된 날짜(${result.date})가 여행 기간 밖이에요. 날짜를 확인해주세요`, 5000);
   if (result.time) { document.getElementById('entry-time').value = result.time; updateKoreaTimeDisplay(); }
   if (result.vendor) document.getElementById('entry-vendor').value = result.vendor;
   if (result.place) document.getElementById('entry-place').value = result.place;
@@ -2220,7 +2237,9 @@ document.getElementById('expense-photo-input').addEventListener('change', async 
   if (!file) return;
   const result = await analyzePhoto(file, document.getElementById('expense-photo-status'));
 
+  expensePhotoDetectedDate = result.date || null;
   document.getElementById('expense-date').value = (result.date && getTripDates().includes(result.date)) ? result.date : (viewDate || getTripDates()[0]);
+  if (result.date && !getTripDates().includes(result.date)) toast(`⚠️ 영수증에서 인식된 날짜(${result.date})가 여행 기간 밖이에요. 날짜를 확인해주세요`, 5000);
   document.getElementById('expense-time').value = result.time || document.getElementById('expense-time').value || '12:00';
   const place = result.vendor || result.place || result.description;
   if (place) document.getElementById('expense-place').value = place;
