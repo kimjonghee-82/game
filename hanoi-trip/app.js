@@ -1478,6 +1478,7 @@ document.getElementById('ref-group-tabs').addEventListener('click', (e) => {
   refGroup = btn.dataset.group;
   refRegion = getRegionKeys()[0];
   renderReferenceTab();
+  scrollActiveTabIntoView('region-tabs');
 });
 
 function renderRegionTabs() {
@@ -1486,7 +1487,6 @@ function renderRegionTabs() {
   document.getElementById('region-tabs').innerHTML = keys.map(k =>
     `<button class="region-tab-btn${k === refRegion ? ' active' : ''}" data-region="${k}">${escapeHtml(regionLabel(k))}</button>`
   ).join('');
-  scrollActiveTabIntoView('region-tabs');
 }
 
 /** 탭이 많아 가로 스크롤이 생기는 경우, 스와이프/클릭으로 바뀐 활성 탭이 항상 보이도록 스크롤 이동 */
@@ -1518,6 +1518,7 @@ document.getElementById('region-tabs').addEventListener('click', (e) => {
   if (!btn) return;
   refRegion = btn.dataset.region;
   renderReferenceTab();
+  scrollActiveTabIntoView('region-tabs');
 });
 
 function playSwipeAnim(el, delta) {
@@ -1535,6 +1536,7 @@ function goToAdjacentRegion(delta) {
   if (nextIdx < 0 || nextIdx >= keys.length) return;
   refRegion = keys[nextIdx];
   renderReferenceTab();
+  scrollActiveTabIntoView('region-tabs');
   playSwipeAnim(document.getElementById('ref-list-active'), delta);
 }
 
@@ -1767,7 +1769,6 @@ function renderVideoRegionTabs() {
   document.getElementById('video-region-tabs').innerHTML =
     keys.map(k => `<button class="region-tab-btn${k === videoRegion ? ' active' : ''}" data-region="${k}">${escapeHtml(regionLabel(k))}</button>`).join('')
     + `<button type="button" class="region-tab-add-btn" id="btn-add-video-region" title="장소 추가">+</button>`;
-  scrollActiveTabIntoView('video-region-tabs');
 }
 
 function renderOtherTab() {
@@ -1814,12 +1815,14 @@ document.getElementById('video-region-tabs').addEventListener('click', (e) => {
     if (!videos[key]) { videos[key] = []; saveVideos(videos); }
     videoRegion = key;
     renderOtherTab();
+    scrollActiveTabIntoView('video-region-tabs');
     return;
   }
   const btn = e.target.closest('.region-tab-btn');
   if (!btn) return;
   videoRegion = btn.dataset.region;
   renderOtherTab();
+  scrollActiveTabIntoView('video-region-tabs');
 });
 
 /** 하노이/사파(및 추가된 장소) 사이를 화면 스와이프로 이동 */
@@ -1830,6 +1833,7 @@ function goToAdjacentVideoRegion(delta) {
   if (nextIdx < 0 || nextIdx >= keys.length) return;
   videoRegion = keys[nextIdx];
   renderOtherTab();
+  scrollActiveTabIntoView('video-region-tabs');
   playSwipeAnim(document.getElementById('other-video-list'), delta);
 }
 attachSwipeNav(document.getElementById('tab-other'), goToAdjacentVideoRegion);
