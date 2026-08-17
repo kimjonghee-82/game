@@ -1024,14 +1024,15 @@ function renderItineraryGrid() {
 
 function renderTimelineItem(e) {
   const costHtml = e.expenseId ? renderChipCost(e.expenseId) : '';
+  const title = e.vendor || e.text;
   const subChips = [];
-  if (e.vendor) subChips.push(`<span class="tl-chip">${escapeHtml(e.vendor)}</span>`);
+  if (e.vendor && e.text) subChips.push(`<span class="tl-chip">${escapeHtml(e.text)}</span>`);
   if (e.place) subChips.push(`<span class="tl-chip">📍 ${escapeHtml(e.place)}</span>`);
   return `<div class="tl-item" data-entry-id="${e.id}">
     <div class="tl-time">${e.time}</div>
     <div class="tl-rail"><span class="tl-dot"></span><span class="tl-connector"></span></div>
     <div class="tl-content">
-      <div class="tl-title">${escapeHtml(e.text)}${e.photoThumb ? '<span class="tl-photo-mark">📷</span>' : ''}${costHtml}</div>
+      <div class="tl-title">${escapeHtml(title)}${e.photoThumb ? '<span class="tl-photo-mark">📷</span>' : ''}${costHtml}</div>
       ${subChips.length ? `<div class="tl-sub">${subChips.join('')}</div>` : ''}
     </div>
   </div>`;
