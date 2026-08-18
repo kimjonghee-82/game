@@ -564,22 +564,31 @@ function attachSyncListener() {
   });
 }
 
+/** get() 후 merge해서 set()하는 방식은 그 사이(네트워크 왕복 시간) 다른 기기가 먼저 써버리면
+    그 기기의 변경을 그대로 덮어써버리는 "lost update" 경쟁 상태가 생김 — 동행이 동시에 각자
+    일정을 등록할 때 한쪽이 사라지는 원인이 바로 이것. runTransaction은 커밋 시점에 문서가
+    읽었을 때와 달라졌으면 병합 함수를 최신 데이터로 자동 재실행해주므로, 두 기기가 동시에 써도
+    한쪽이 다른 쪽을 조용히 지우는 일이 없음. */
 function pushSyncNow() {
   if (!syncDb) return Promise.reject(new Error('동기화가 연결되지 않았습니다'));
   const docRef = syncDb.collection('trips').doc(getTripCode());
-  return docRef.get().then(snap => {
-    const remote = snap.exists ? snap.data() : {};
-    applyRemoteMerge(remote); // 서버에 올리기 전에 먼저 서버 최신 상태와 병합해서 로컬을 정리
-    const payload = {
-      itinerary: loadItinerary(),
-      expenses: loadExpenses(),
-      reference: loadReference(),
-      otherVideos: loadVideos(),
-      documents: loadDocuments(),
-    };
-    return docRef.set({ ...payload, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
-      .then(() => saveSyncBaseline(payload)); // 서버에 실제로 반영된 걸 확인한 뒤에만 baseline을 이 상태로 갱신
-  }).catch(e => { console.error('sync push failed', e); setSyncStatus('error'); throw e; });
+  let lastPayload = null;
+  return syncDb.runTransaction((tx) => {
+    return tx.get(docRef).then((snap) => {
+      const remote = snap.exists ? snap.data() : {};
+      applyRemoteMerge(remote); // 트랜잭션이 방금 읽은 최신 서버 상태와 병합해서 로컬을 정리
+      const payload = {
+        itinerary: loadItinerary(),
+        expenses: loadExpenses(),
+        reference: loadReference(),
+        otherVideos: loadVideos(),
+        documents: loadDocuments(),
+      };
+      lastPayload = payload;
+      tx.set(docRef, { ...payload, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    });
+  }).then(() => saveSyncBaseline(lastPayload)) // 트랜잭션이 실제로 커밋된 뒤에만 baseline을 이 상태로 갱신
+    .catch(e => { console.error('sync push failed', e); setSyncStatus('error'); throw e; });
 }
 
 function scheduleSyncPush() {
