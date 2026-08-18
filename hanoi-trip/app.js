@@ -1553,7 +1553,9 @@ function attachSwipeNav(sectionEl, onSwipe) {
     const t = e.changedTouches[0];
     const dx = t.clientX - startX;
     const dy = t.clientY - startY;
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+    // 목록을 세로로 스크롤하다가 손가락이 살짝 옆으로 쏠려도 날짜/지역이 실수로 바뀌지 않도록,
+    // 뚜렷하게 가로 방향인 스와이프만 인정함 (세로 이동이 크면 스크롤로 간주하고 무시)
+    if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2.2 && Math.abs(dy) < 120) {
       onSwipe(dx < 0 ? 1 : -1);
     }
   }, { passive: true });
