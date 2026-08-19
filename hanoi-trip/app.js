@@ -2102,7 +2102,8 @@ const RECEIPT_ANALYSIS_PROMPT = `당신은 베트남(하노이/사파) 여행 �
   "time_on_receipt": "HH:MM" 또는 null (사진에 적힌 탑승/이용/결제 시간. 사진을 촬영한 시각이 아니라 사진 내용 속의 시간),
   "category": "이동" "식사" "관광" "숙소" "쇼핑" "기타" 중 하나,
   "website": "사진 속에 보이는 웹사이트/홈페이지 주소가 있다면 그 값, 없으면 null",
-  "description": "내용에 대한 한 문장 요약 (한국어)"
+  "description": "내용에 대한 한 문장 요약 (한국어)",
+  "items": [{"name": "품목명", "price": 숫자}] 형식의 배열. 영수증에 개별 품목과 그 금액이 각각 나열되어 있으면 그 내역을 모두 담고, 그런 세부 항목 없이 총액만 있거나 영수증이 아니면 빈 배열 []
 }
 추론 과정이나 설명을 출력하지 마세요. <think> 태그를 쓰지 말고, 다른 텍스트 없이 오직 위 JSON 객체 하나만 바로 출력하세요.`;
 
@@ -2218,8 +2219,14 @@ async function analyzePhoto(file, statusEl) {
     amount: (vision && vision.amount) || null,
     currency: (vision && vision.currency) || null,
     website: (vision && vision.website) || '',
+    items: (vision && Array.isArray(vision.items)) ? vision.items.filter(it => it && it.name) : [],
     thumb, meta: exif,
   };
+}
+
+/** 영수증의 개별 품목 내역을 메모 칸에 넣을 수 있는 여러 줄 텍스트로 정리 */
+function formatReceiptItemsForMemo(items) {
+  return items.map(it => `${it.name} ${fmtAmount(it.price)}`.trim()).join('\n');
 }
 
 /** 영수증/티켓 사진을 앱 안에만 남기지 않고 기기(갤러리 등)에도 저장 시도.
@@ -2268,6 +2275,7 @@ document.getElementById('entry-photo-input').addEventListener('change', async (e
     document.getElementById('entry-cost-amount').value = result.amount;
     document.getElementById('entry-cost-currency').value = result.currency || 'VND';
   }
+  if (result.items.length) document.getElementById('entry-memo').value = formatReceiptItemsForMemo(result.items);
   pendingEntryPhoto = { thumb: result.thumb, meta: result.meta };
 });
 
@@ -2293,10 +2301,14 @@ document.getElementById('expense-photo-input').addEventListener('change', async 
   } else {
     toast('금액을 자동으로 인식하지 못했어요. 직접 입력해주세요', 4000);
   }
-  const memoParts = [];
-  if (result.place && result.place !== place) memoParts.push(result.place);
-  if (result.description && result.description !== place) memoParts.push(result.description);
-  if (memoParts.length) document.getElementById('expense-memo').value = memoParts.join(' · ');
+  if (result.items.length) {
+    document.getElementById('expense-memo').value = formatReceiptItemsForMemo(result.items);
+  } else {
+    const memoParts = [];
+    if (result.place && result.place !== place) memoParts.push(result.place);
+    if (result.description && result.description !== place) memoParts.push(result.description);
+    if (memoParts.length) document.getElementById('expense-memo').value = memoParts.join(' · ');
+  }
 });
 
 /* ============================== 카메라 번역 ============================== */

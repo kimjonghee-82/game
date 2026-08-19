@@ -211,7 +211,7 @@
   </label>
   <label>상호(장소명) <input type="text" id="entry-vendor" placeholder="예: 캣캣힐스, 르퍼폼 호텔"></label>
   <label>내용 <input type="text" id="entry-text" placeholder="예: 집 출발"></label>
-  <label>메모 <input type="text" id="entry-memo"></label>
+  <label>메모 <textarea id="entry-memo" rows="2"></textarea></label>
   <fieldset class="cost-fieldset">
     <legend>비용 (선택)</legend>
     <div class="cost-row">
@@ -268,7 +268,7 @@
       <option value="USD">USD</option>
     </select>
   </div>
-  <label>메모 <input type="text" id="expense-memo"></label>
+  <label>메모 <textarea id="expense-memo" rows="2"></textarea></label>
   <div class="modal-actions">
     <button id="expense-delete-btn" class="btn danger">삭제</button>
     <div class="spacer"></div>
@@ -437,6 +437,6 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script src="app.js?v=67"></script>
+<script src="app.js?v=68"></script>
 </body>
 </html>
