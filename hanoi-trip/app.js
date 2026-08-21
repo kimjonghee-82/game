@@ -1054,7 +1054,6 @@ function renderTimelineItem(e) {
       <div class="tl-title">${escapeHtml(title)}${costHtml}</div>
       ${subChips.length ? `<div class="tl-sub">${subChips.join('')}</div>` : ''}
       ${e.memo ? `<div class="tl-memo">${renderMemoPreview(e.memo)}</div>` : ''}
-      ${renderPhotoStrip(entryPhotos(e))}
     </div>
   </div>`;
 }
@@ -1069,14 +1068,6 @@ function escapeHtml(s) {
 }
 
 document.getElementById('itinerary-day-view').addEventListener('click', (e) => {
-  const stripEl = e.target.closest('.photo-strip');
-  if (stripEl) {
-    e.stopPropagation();
-    const item = e.target.closest('.tl-item');
-    const entry = loadItinerary().find(x => x.id === item.dataset.entryId);
-    if (entry) openPhotoGallery(entryPhotos(entry));
-    return;
-  }
   const item = e.target.closest('.tl-item');
   if (item) { openEntryModal(item.dataset.entryId); return; }
   const lodgingRow = e.target.closest('.tl-lodging');
@@ -1101,9 +1092,12 @@ function renderEntryPhotoThumbs() {
 }
 document.getElementById('entry-photo-thumbs').addEventListener('click', (e) => {
   const btn = e.target.closest('.photo-thumb-remove');
-  if (!btn) return;
-  pendingEntryPhotos.splice(Number(btn.dataset.idx), 1);
-  renderEntryPhotoThumbs();
+  if (btn) {
+    pendingEntryPhotos.splice(Number(btn.dataset.idx), 1);
+    renderEntryPhotoThumbs();
+    return;
+  }
+  if (e.target.closest('.photo-thumb-item')) openPhotoGallery(pendingEntryPhotos);
 });
 
 function openEntryModal(entryId, prefill) {
@@ -1311,7 +1305,6 @@ function renderExpenseRow(exp) {
         <div class="exp-title">${escapeHtml(exp.place || '')}</div>
         <div class="exp-time">${formatTimeAmPm(exp.time)}</div>
         ${exp.memo ? `<div class="tl-memo">${renderMemoPreview(exp.memo)}</div>` : ''}
-        ${renderPhotoStrip(entryPhotos(exp))}
       </div>
       <div class="exp-amounts">
         <div class="exp-krw">${exp.currency === 'KRW' ? fmtAmount(exp.amount) + '원' : (exp.krw ? fmtAmount(Math.round(exp.krw)) + '원' : '조회중')}</div>
@@ -1360,14 +1353,6 @@ document.getElementById('expense-total').addEventListener('click', () => {
 });
 
 document.getElementById('expense-list').addEventListener('click', (e) => {
-  const stripEl = e.target.closest('.photo-strip');
-  if (stripEl) {
-    e.stopPropagation();
-    const row = e.target.closest('.exp-row');
-    const exp = loadExpenses().find(x => x.id === row.dataset.id);
-    if (exp) openPhotoGallery(entryPhotos(exp));
-    return;
-  }
   const row = e.target.closest('.exp-row');
   if (row) openExpenseModal(row.dataset.id);
 });
@@ -1386,9 +1371,12 @@ function renderExpensePhotoThumbs() {
 }
 document.getElementById('expense-photo-thumbs').addEventListener('click', (e) => {
   const btn = e.target.closest('.photo-thumb-remove');
-  if (!btn) return;
-  pendingExpensePhotos.splice(Number(btn.dataset.idx), 1);
-  renderExpensePhotoThumbs();
+  if (btn) {
+    pendingExpensePhotos.splice(Number(btn.dataset.idx), 1);
+    renderExpensePhotoThumbs();
+    return;
+  }
+  if (e.target.closest('.photo-thumb-item')) openPhotoGallery(pendingExpensePhotos);
 });
 
 function openExpenseModal(expenseId) {
@@ -2385,13 +2373,20 @@ async function analyzePhotosCombined(files, statusEl) {
   };
 }
 
+/** 일정/비용 수정 화면 안에서 열리는 경우가 대부분이라, openModal()을 그대로 쓰면 그 아래
+    모달의 openModalId/배경을 덮어써버림. 그래서 배경(backdrop)만 켜고 openModalId는 건드리지
+    않아, 갤러리를 닫아도 아래 모달이 계속 정상적으로 열려 있도록 함. */
 function openPhotoGallery(photos) {
   if (!photos || !photos.length) return;
   document.getElementById('photo-gallery-grid').innerHTML =
     photos.map(p => `<img src="${p.thumb}" alt="사진">`).join('');
-  openModal('modal-photo-gallery');
+  document.getElementById('modal-backdrop').classList.remove('hidden');
+  document.getElementById('modal-photo-gallery').classList.remove('hidden');
 }
-document.getElementById('photo-gallery-close-btn').addEventListener('click', () => closeModal('modal-photo-gallery'));
+document.getElementById('photo-gallery-close-btn').addEventListener('click', () => {
+  document.getElementById('modal-photo-gallery').classList.add('hidden');
+  if (!openModalId) document.getElementById('modal-backdrop').classList.add('hidden');
+});
 
 /** 일정/비용 항목에 붙은 사진(구버전 단일 photoThumb/photoMeta도 배열 형태로 변환) */
 function entryPhotos(item) {
@@ -2400,18 +2395,6 @@ function entryPhotos(item) {
   return [];
 }
 
-/** 카드/목록 줄에 보여줄 사진 미리보기 — 최대 4장만 썸네일로 보여주고 나머지는 "+N"으로 표시.
-    클릭하면 전체를 볼 수 있도록 상위 클릭 핸들러에서 .photo-strip 클래스를 감지해 처리함. */
-function renderPhotoStrip(photos) {
-  if (!photos.length) return '';
-  const MAX_SHOWN = 4;
-  const shown = photos.slice(0, MAX_SHOWN);
-  const extra = photos.length - shown.length;
-  return `<div class="photo-strip">
-    ${shown.map(p => `<img src="${p.thumb}" class="photo-strip-thumb">`).join('')}
-    ${extra > 0 ? `<div class="photo-strip-more">+${extra}</div>` : ''}
-  </div>`;
-}
 
 /** 영수증/티켓 사진을 앱 안에만 남기지 않고 기기(갤러리 등)에도 저장 시도.
     navigator.share()가 되면 "이미지 저장"을 고를 수 있는 공유 시트를 띄우고,
