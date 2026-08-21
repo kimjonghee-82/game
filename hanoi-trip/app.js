@@ -2147,12 +2147,14 @@ const RECEIPT_ANALYSIS_PROMPT = `당신은 베트남(하노이/사파) 여행 �
 사진이 여러 장 함께 주어질 수 있습니다. 다음 두 경우를 사진 내용을 보고 직접 판단해서 구분하세요:
 - 품목이 많아 영수증 하나가 여러 장에 나뉘어 찍힌 경우(예: 앞부분 사진엔 품목 일부만 있고 합계가 없는데, 뒷부분 사진에 나머지 품목과 최종 합계가 있는 경우) — 이때는 전체를 하나의 영수증으로 보고, 모든 사진의 품목을 중복 없이 합쳐 items에 담고, amount에는 최종 합계를 "한 번만" 반영하세요. 사진마다 부분 합계를 계산해서 서로 더하면 안 됩니다.
 - 서로 다른 별개의 영수증 여러 장인 경우 — 각 영수증의 금액을 모두 더한 총합을 amount에 넣고, 품목도 전부 합쳐서 items에 넣으세요.
+amount는 가장 중요한 값입니다. "Tong cong", "합계", "총액", "Total" 처럼 영수증에 인쇄된 총액 숫자가 어느 사진에든 보이면, 계산하지 말고 그 인쇄된 숫자를 그대로 읽어서 amount에 쓰세요 (인쇄된 합계가 직접 계산한 값보다 항상 더 정확합니다). 품목별 금액만 있고 인쇄된 합계가 어느 사진에도 없을 때만 직접 더해서 계산하세요.
+품목이 아주 많은 영수증이라면 items는 최대한 다 담되, 지면이 부족해 일부를 줄여야 한다면 items를 줄이는 것이 amount를 틀리게 계산하는 것보다 낫습니다 — amount(와 인쇄된 합계 그대로 읽기)를 항상 최우선으로 정확하게 답하세요.
 사진 속 글자와 내용을 직접 읽고 상황에 맞게 이해해서, 아래 JSON 형식으로만 답변하세요 (다른 설명 없이 JSON만, 여러 장이 주어져도 답은 아래 형식 하나로만):
 {
   "is_receipt": true 또는 false (영수증/입장권/티켓/예약확인서처럼 비용이 발생한 내역으로 보이면 true),
   "vendor": "가게/장소/서비스 이름(상호) 또는 null",
   "place": "주소나 지역/장소 이름 또는 null",
-  "amount": 숫자 또는 null (영수증일 경우 총 결제금액 숫자만, 통화 기호/구분자 제외. 총액/합계 표시가 없고 품목별 개별 금액만 나열되어 있다면 모든 품목 금액을 직접 더해서 계산한 합계를 넣으세요),
+  "amount": 숫자 또는 null (영수증일 경우 총 결제금액 숫자만, 통화 기호/구분자 제외. 인쇄된 합계가 보이면 그 숫자를 그대로 쓰고, 없을 때만 품목 금액을 더해서 계산하세요),
   "currency": "VND" 또는 "KRW" 또는 "USD" 또는 null,
   "date_on_receipt": "YYYY-MM-DD" 또는 null (사진에 적힌 예약일/탑승일/결제일 등의 날짜. 사진을 촬영한 날짜가 아니라 사진 내용 속의 날짜),
   "time_on_receipt": "HH:MM" 또는 null (사진에 적힌 탑승/이용/결제 시간. 사진을 촬영한 시각이 아니라 사진 내용 속의 시간),
@@ -2199,7 +2201,7 @@ async function analyzeImageWithGroqVision(dataUrlOrUrls, apiKey, model, prompt) 
     },
     body: JSON.stringify({
       model: model || DEFAULT_GROQ_VISION_MODEL,
-      max_tokens: 2000,
+      max_tokens: 3000,
       temperature: 0,
       reasoning_effort: 'none',
       messages: [
@@ -2303,7 +2305,9 @@ async function analyzePhotosCombined(files, statusEl) {
   const thumbList = [];
   const metaList = [];
   for (const file of files) {
-    resizedList.push(await resizeImageToDataUrl(file, 1024, 0.75));
+    // 영수증 글씨가 빽빽하게 많은 경우(예: 대형마트 영수증) 합계 숫자를 정확히 읽으려면
+    // 단일 사진 분석(1024px)보다 더 높은 해상도가 필요해서 이 경로만 더 크게 리사이즈함
+    resizedList.push(await resizeImageToDataUrl(file, 1400, 0.8));
     thumbList.push(await resizeImageToDataUrl(file, 400, 0.6));
     metaList.push(await readExifInfo(file));
   }
