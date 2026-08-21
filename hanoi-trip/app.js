@@ -2392,37 +2392,11 @@ function entryPhotos(item) {
 }
 
 
-/** 영수증/티켓 사진을 앱 안에만 남기지 않고 기기(갤러리 등)에도 저장 시도.
-    navigator.share()가 되면 "이미지 저장"을 고를 수 있는 공유 시트를 띄우고,
-    안 되는 환경(데스크톱 등)에서는 파일 다운로드로 대체함. 등록 흐름을 막지 않도록
-    await 하지 않고 백그라운드로 실행하며, 실패해도 등록 자체엔 영향 없음. */
-async function offerSaveCapturedPhoto(file) {
-  try {
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: '사진 저장' });
-      return;
-    }
-  } catch (e) {
-    if (e && e.name === 'AbortError') return; // 사용자가 공유 시트를 취소함
-  }
-  try {
-    const url = URL.createObjectURL(file);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = file.name || `photo-${Date.now()}.jpg`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-  } catch (e) { /* 기기 저장 실패해도 등록은 계속 진행 */ }
-}
-
 document.getElementById('entry-photo-btn').addEventListener('click', () => document.getElementById('entry-photo-input').click());
 document.getElementById('entry-photo-input').addEventListener('change', async (e) => {
   const files = Array.from(e.target.files);
   e.target.value = '';
   if (!files.length) return;
-  files.forEach(f => offerSaveCapturedPhoto(f));
 
   const statusEl = document.getElementById('entry-photo-status');
   const result = await analyzePhotosCombined(files, statusEl);
@@ -2450,7 +2424,6 @@ document.getElementById('expense-photo-input').addEventListener('change', async 
   const files = Array.from(e.target.files);
   e.target.value = '';
   if (!files.length) return;
-  files.forEach(f => offerSaveCapturedPhoto(f));
 
   const statusEl = document.getElementById('expense-photo-status');
   const result = await analyzePhotosCombined(files, statusEl);
