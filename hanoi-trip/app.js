@@ -2027,6 +2027,25 @@ function resizeImageToDataUrl(file, maxDim, quality) {
   });
 }
 
+function estimateBase64Bytes(dataUrl) {
+  const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+  return Math.floor(base64.length * 3 / 4);
+}
+
+/** resizeImageToDataUrl 결과가 너무 크면(Groq는 base64 이미지 1장당 4MB 제한) 화질과 크기를
+    단계적으로 낮춰가며 다시 만들어서, 넉넉하게 3.5MB 이하로 맞춤. 글자가 빽빽한 영수증처럼
+    고해상도가 필요한 사진에서 해상도를 올렸을 때 이 제한에 걸리는 걸 막기 위함. */
+async function resizeImageToDataUrlCapped(file, maxDim, quality, maxBytes = 3.5 * 1024 * 1024) {
+  let dim = maxDim;
+  let q = quality;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const dataUrl = await resizeImageToDataUrl(file, dim, q);
+    if (estimateBase64Bytes(dataUrl) <= maxBytes || attempt === 5) return dataUrl;
+    q = Math.max(0.4, q - 0.15);
+    dim = Math.max(700, Math.round(dim * 0.85));
+  }
+}
+
 function loadImageElement(dataUrl) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -2251,7 +2270,7 @@ async function analyzePhoto(file, statusEl) {
   const setStatus = (t) => { if (statusEl) statusEl.textContent = t; };
 
   setStatus('이미지 처리 중...');
-  const resized = await resizeImageToDataUrl(file, 1024, 0.75);
+  const resized = await resizeImageToDataUrlCapped(file, 1024, 0.75);
   const thumb = await resizeImageToDataUrl(file, 400, 0.6);
   const exif = await readExifInfo(file);
 
@@ -2316,8 +2335,10 @@ async function analyzePhotosCombined(files, statusEl) {
   const metaList = [];
   for (const file of files) {
     // 영수증 글씨가 빽빽하게 많은 경우(예: 대형마트 영수증) 합계 숫자를 정확히 읽으려면
-    // 단일 사진 분석(1024px)보다 더 높은 해상도가 필요해서 이 경로만 더 크게 리사이즈함
-    resizedList.push(await resizeImageToDataUrl(file, 1400, 0.8));
+    // 단일 사진 분석(1024px)보다 더 높은 해상도가 필요해서 이 경로만 더 크게 리사이즈함.
+    // Groq는 base64 이미지 1장당 4MB 제한이 있어서(초과 시 413 오류), 결과가 너무 크면
+    // 자동으로 화질/크기를 낮추는 resizeImageToDataUrlCapped를 씀.
+    resizedList.push(await resizeImageToDataUrlCapped(file, 1400, 0.8));
     thumbList.push(await resizeImageToDataUrl(file, 400, 0.6));
     metaList.push(await readExifInfo(file));
   }
@@ -2530,7 +2551,7 @@ document.getElementById('translate-photo-input').addEventListener('change', asyn
   const settings = loadSettings();
 
   setStatus('이미지 처리 중...');
-  const resized = await resizeImageToDataUrl(file, 1024, 0.75);
+  const resized = await resizeImageToDataUrlCapped(file, 1024, 0.75);
   const thumb = await resizeImageToDataUrl(file, 400, 0.6);
   document.getElementById('translate-thumb').src = thumb;
   document.getElementById('translate-thumb-wrap').classList.remove('hidden');
