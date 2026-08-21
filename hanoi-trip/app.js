@@ -1034,7 +1034,7 @@ function renderItineraryGrid() {
 /** 목록/카드에 메모를 다 펼쳐서 보여주면(특히 영수증 품목이 많을 때) 화면이 너무 복잡해지므로
     앞 몇 줄만 미리보기로 보여줌 — 전체 내용은 항목을 탭해서 수정 화면을 열면 그대로 다 보임
     (저장된 메모 자체는 그대로라 예전에 등록한 항목도 자동으로 같은 방식으로 보임). */
-function renderMemoPreview(memo, maxLines = 4) {
+function renderMemoPreview(memo, maxLines = 2) {
   const lines = memo.split('\n');
   if (lines.length <= maxLines) return escapeHtml(memo);
   const rest = lines.length - maxLines;
@@ -1044,15 +1044,11 @@ function renderMemoPreview(memo, maxLines = 4) {
 function renderTimelineItem(e) {
   const costHtml = e.expenseId ? renderChipCost(e.expenseId) : '';
   const title = e.vendor || e.text;
-  const subChips = [];
-  if (e.vendor && e.text) subChips.push(`<span class="tl-chip">${escapeHtml(e.text)}</span>`);
-  if (e.place) subChips.push(`<span class="tl-chip">📍 ${escapeHtml(e.place)}</span>`);
   return `<div class="tl-item" data-entry-id="${e.id}">
     <div class="tl-time">${e.time}</div>
     <div class="tl-rail"><span class="tl-dot"></span><span class="tl-connector"></span></div>
     <div class="tl-content">
       <div class="tl-title">${escapeHtml(title)}${costHtml}</div>
-      ${subChips.length ? `<div class="tl-sub">${subChips.join('')}</div>` : ''}
       ${e.memo ? `<div class="tl-memo">${renderMemoPreview(e.memo)}</div>` : ''}
     </div>
   </div>`;
