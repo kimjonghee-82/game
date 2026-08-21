@@ -852,7 +852,7 @@ function seedDefaultsIfEmpty() {
   if (loadItinerary().length === 0) {
     saveItinerary(SEED_ITINERARY.map(e => ({
       id: uid(), vendor: '', place: '', mapUrl: '', expenseId: null,
-      photoThumb: null, photoMeta: null, lodging: false, ...e,
+      photos: null, lodging: false, ...e,
     })));
   }
 }
@@ -1041,9 +1041,10 @@ function renderTimelineItem(e) {
     <div class="tl-time">${e.time}</div>
     <div class="tl-rail"><span class="tl-dot"></span><span class="tl-connector"></span></div>
     <div class="tl-content">
-      <div class="tl-title">${escapeHtml(title)}${e.photoThumb ? '<span class="tl-photo-mark">📷</span>' : ''}${costHtml}</div>
+      <div class="tl-title">${escapeHtml(title)}${costHtml}</div>
       ${subChips.length ? `<div class="tl-sub">${subChips.join('')}</div>` : ''}
       ${e.memo ? `<div class="tl-memo">${escapeHtml(e.memo)}</div>` : ''}
+      ${renderPhotoStrip(entryPhotos(e))}
     </div>
   </div>`;
 }
@@ -1058,6 +1059,14 @@ function escapeHtml(s) {
 }
 
 document.getElementById('itinerary-day-view').addEventListener('click', (e) => {
+  const stripEl = e.target.closest('.photo-strip');
+  if (stripEl) {
+    e.stopPropagation();
+    const item = e.target.closest('.tl-item');
+    const entry = loadItinerary().find(x => x.id === item.dataset.entryId);
+    if (entry) openPhotoGallery(entryPhotos(entry));
+    return;
+  }
   const item = e.target.closest('.tl-item');
   if (item) { openEntryModal(item.dataset.entryId); return; }
   const lodgingRow = e.target.closest('.tl-lodging');
@@ -1070,8 +1079,22 @@ document.getElementById('itinerary-day-view').addEventListener('click', (e) => {
 
 document.getElementById('btn-add-entry').addEventListener('click', () => openEntryModal(null, { date: viewDate }));
 
-let pendingEntryPhoto = null; // {thumb, meta} set by "사진으로 채우기", applied on save
+let pendingEntryPhotos = []; // [{thumb, meta}, ...] set by "사진으로 채우기", applied on save
 let entryPhotoDetectedDate = null; // 사진에서 인식된 날짜 — 선택된 날짜와 다르면 저장 시 확인창을 띄우기 위해 기억해둠
+
+function renderEntryPhotoThumbs() {
+  document.getElementById('entry-photo-thumbs').innerHTML = pendingEntryPhotos.map((p, i) => `
+    <div class="photo-thumb-item">
+      <img src="${p.thumb}" class="photo-thumb">
+      <button type="button" class="photo-thumb-remove" data-idx="${i}" title="삭제">✕</button>
+    </div>`).join('');
+}
+document.getElementById('entry-photo-thumbs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.photo-thumb-remove');
+  if (!btn) return;
+  pendingEntryPhotos.splice(Number(btn.dataset.idx), 1);
+  renderEntryPhotoThumbs();
+});
 
 function openEntryModal(entryId, prefill) {
   const isNew = !entryId;
@@ -1080,15 +1103,17 @@ function openEntryModal(entryId, prefill) {
   fillDateSelect(document.getElementById('entry-date'));
   document.getElementById('entry-delete-btn').classList.toggle('hidden', isNew);
   document.getElementById('entry-photo-status').textContent = '';
-  pendingEntryPhoto = null;
+  pendingEntryPhotos = [];
   entryPhotoDetectedDate = null;
 
-  let entry = { date: viewDate || getTripDates()[0], time: '09:00', text: '', vendor: '', place: '', mapUrl: '', category: '이동', memo: '', lodging: false, expenseId: null, photoThumb: null, photoMeta: null };
+  let entry = { date: viewDate || getTripDates()[0], time: '09:00', text: '', vendor: '', place: '', mapUrl: '', category: '이동', memo: '', lodging: false, expenseId: null, photos: null };
   if (!isNew) {
     entry = { ...entry, ...(loadItinerary().find(x => x.id === entryId) || {}) };
+    pendingEntryPhotos = entryPhotos(entry);
   } else if (prefill) {
     entry = { ...entry, ...prefill };
   }
+  renderEntryPhotoThumbs();
 
   document.getElementById('entry-date').value = entry.date;
   document.getElementById('entry-time').value = entry.time;
@@ -1195,16 +1220,15 @@ document.getElementById('entry-save-btn').addEventListener('click', () => {
 
   let entry = entries.find(x => x.id === id);
   if (!entry) {
-    entry = { id: uid(), date, time, text, vendor, place, mapUrl, category, memo, lodging, expenseId: null, photoThumb: null, photoMeta: null };
+    entry = { id: uid(), date, time, text, vendor, place, mapUrl, category, memo, lodging, expenseId: null, photos: null };
     entries.push(entry);
   } else {
     Object.assign(entry, { date, time, text, vendor, place, mapUrl, category, memo, lodging });
   }
-  if (pendingEntryPhoto) {
-    entry.photoThumb = pendingEntryPhoto.thumb;
-    entry.photoMeta = pendingEntryPhoto.meta;
-    pendingEntryPhoto = null;
-  }
+  entry.photos = pendingEntryPhotos.length ? [...pendingEntryPhotos] : null;
+  delete entry.photoThumb;
+  delete entry.photoMeta;
+  pendingEntryPhotos = [];
 
   syncEntryCost(entry, costAmount ? Number(costAmount) : null, costCurrency, vendor || text);
   saveItinerary(entries);
@@ -1275,7 +1299,9 @@ function renderExpenseRow(exp) {
       <div class="exp-icon">${EXPENSE_CATEGORY_ICONS[exp.category] || '📦'}</div>
       <div class="exp-main">
         <div class="exp-title">${escapeHtml(exp.place || '')}</div>
-        <div class="exp-time">${formatTimeAmPm(exp.time)}${exp.memo ? ' · ' + escapeHtml(exp.memo) : ''}</div>
+        <div class="exp-time">${formatTimeAmPm(exp.time)}</div>
+        ${exp.memo ? `<div class="tl-memo">${escapeHtml(exp.memo)}</div>` : ''}
+        ${renderPhotoStrip(entryPhotos(exp))}
       </div>
       <div class="exp-amounts">
         <div class="exp-krw">${exp.currency === 'KRW' ? fmtAmount(exp.amount) + '원' : (exp.krw ? fmtAmount(Math.round(exp.krw)) + '원' : '조회중')}</div>
@@ -1324,6 +1350,14 @@ document.getElementById('expense-total').addEventListener('click', () => {
 });
 
 document.getElementById('expense-list').addEventListener('click', (e) => {
+  const stripEl = e.target.closest('.photo-strip');
+  if (stripEl) {
+    e.stopPropagation();
+    const row = e.target.closest('.exp-row');
+    const exp = loadExpenses().find(x => x.id === row.dataset.id);
+    if (exp) openPhotoGallery(entryPhotos(exp));
+    return;
+  }
   const row = e.target.closest('.exp-row');
   if (row) openExpenseModal(row.dataset.id);
 });
@@ -1331,6 +1365,21 @@ document.getElementById('expense-list').addEventListener('click', (e) => {
 document.getElementById('btn-add-expense').addEventListener('click', () => openExpenseModal(null));
 
 let expensePhotoDetectedDate = null; // 영수증 사진에서 인식된 날짜 — 선택된 날짜와 다르면 저장 시 확인창을 띄우기 위해 기억해둠
+let pendingExpensePhotos = []; // [{thumb, meta}, ...] set by "사진으로 채우기", applied on save
+
+function renderExpensePhotoThumbs() {
+  document.getElementById('expense-photo-thumbs').innerHTML = pendingExpensePhotos.map((p, i) => `
+    <div class="photo-thumb-item">
+      <img src="${p.thumb}" class="photo-thumb">
+      <button type="button" class="photo-thumb-remove" data-idx="${i}" title="삭제">✕</button>
+    </div>`).join('');
+}
+document.getElementById('expense-photo-thumbs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.photo-thumb-remove');
+  if (!btn) return;
+  pendingExpensePhotos.splice(Number(btn.dataset.idx), 1);
+  renderExpensePhotoThumbs();
+});
 
 function openExpenseModal(expenseId) {
   const isNew = !expenseId;
@@ -1339,8 +1388,10 @@ function openExpenseModal(expenseId) {
   document.getElementById('expense-delete-btn').classList.toggle('hidden', isNew);
   expensePhotoDetectedDate = null;
 
-  let exp = { date: viewDate || getTripDates()[0], time: '12:00', place: '', category: '식사', amount: '', currency: 'VND', memo: '' };
+  let exp = { date: viewDate || getTripDates()[0], time: '12:00', place: '', category: '식사', amount: '', currency: 'VND', memo: '', photos: null };
   if (!isNew) exp = loadExpenses().find(x => x.id === expenseId) || exp;
+  pendingExpensePhotos = entryPhotos(exp);
+  renderExpensePhotoThumbs();
 
   document.getElementById('expense-date').value = exp.date;
   document.getElementById('expense-time').value = exp.time;
@@ -1379,6 +1430,8 @@ document.getElementById('expense-save-btn').addEventListener('click', () => {
     expenses.push(exp);
   }
   Object.assign(exp, { date, time, place, category, amount, currency, memo, krw: currency === 'KRW' ? amount : exp.krw });
+  exp.photos = pendingExpensePhotos.length ? [...pendingExpensePhotos] : null;
+  pendingExpensePhotos = [];
   saveExpenses(expenses);
   expensePhotoDetectedDate = null;
   if (currency !== 'KRW') refreshExpenseKrw(exp.id, true);
@@ -2229,6 +2282,55 @@ function formatReceiptItemsForMemo(items) {
   return items.map(it => `${it.name} ${fmtAmount(it.price)}`.trim()).join('\n');
 }
 
+/** 사진 여러 장을 한 번에 등록했을 때, 각각 analyzePhoto()로 분석한 결과를 하나로 합침.
+    날짜/상호/장소 등은 먼저 값이 있는 사진의 것을 쓰고, 금액은 사진마다 별도 영수증이라고
+    보고 모두 더하며, 품목 내역은 전부 이어붙임. */
+function mergeAnalyzedResults(results) {
+  const firstTruthy = (key) => results.map(r => r[key]).find(v => v) || null;
+  const amounts = results.map(r => r.amount).filter(a => a !== null && a !== undefined);
+  return {
+    date: firstTruthy('date'),
+    time: firstTruthy('time'),
+    vendor: firstTruthy('vendor') || '',
+    place: firstTruthy('place') || '',
+    description: firstTruthy('description') || '',
+    category: firstTruthy('category'),
+    isReceipt: results.some(r => r.isReceipt),
+    amount: amounts.length ? amounts.reduce((a, b) => a + b, 0) : null,
+    currency: firstTruthy('currency'),
+    website: firstTruthy('website') || '',
+    items: results.flatMap(r => r.items || []),
+  };
+}
+
+function openPhotoGallery(photos) {
+  if (!photos || !photos.length) return;
+  document.getElementById('photo-gallery-grid').innerHTML =
+    photos.map(p => `<img src="${p.thumb}" alt="사진">`).join('');
+  openModal('modal-photo-gallery');
+}
+document.getElementById('photo-gallery-close-btn').addEventListener('click', () => closeModal('modal-photo-gallery'));
+
+/** 일정/비용 항목에 붙은 사진(구버전 단일 photoThumb/photoMeta도 배열 형태로 변환) */
+function entryPhotos(item) {
+  if (item.photos && item.photos.length) return item.photos;
+  if (item.photoThumb) return [{ thumb: item.photoThumb, meta: item.photoMeta }];
+  return [];
+}
+
+/** 카드/목록 줄에 보여줄 사진 미리보기 — 최대 4장만 썸네일로 보여주고 나머지는 "+N"으로 표시.
+    클릭하면 전체를 볼 수 있도록 상위 클릭 핸들러에서 .photo-strip 클래스를 감지해 처리함. */
+function renderPhotoStrip(photos) {
+  if (!photos.length) return '';
+  const MAX_SHOWN = 4;
+  const shown = photos.slice(0, MAX_SHOWN);
+  const extra = photos.length - shown.length;
+  return `<div class="photo-strip">
+    ${shown.map(p => `<img src="${p.thumb}" class="photo-strip-thumb">`).join('')}
+    ${extra > 0 ? `<div class="photo-strip-more">+${extra}</div>` : ''}
+  </div>`;
+}
+
 /** 영수증/티켓 사진을 앱 안에만 남기지 않고 기기(갤러리 등)에도 저장 시도.
     navigator.share()가 되면 "이미지 저장"을 고를 수 있는 공유 시트를 띄우고,
     안 되는 환경(데스크톱 등)에서는 파일 다운로드로 대체함. 등록 흐름을 막지 않도록
@@ -2256,11 +2358,18 @@ async function offerSaveCapturedPhoto(file) {
 
 document.getElementById('entry-photo-btn').addEventListener('click', () => document.getElementById('entry-photo-input').click());
 document.getElementById('entry-photo-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
+  const files = Array.from(e.target.files);
   e.target.value = '';
-  if (!file) return;
-  offerSaveCapturedPhoto(file);
-  const result = await analyzePhoto(file, document.getElementById('entry-photo-status'));
+  if (!files.length) return;
+  files.forEach(f => offerSaveCapturedPhoto(f));
+
+  const statusEl = document.getElementById('entry-photo-status');
+  const results = [];
+  for (let i = 0; i < files.length; i++) {
+    if (files.length > 1) statusEl.textContent = `사진 ${i + 1}/${files.length}장 분석 중...`;
+    results.push(await analyzePhoto(files[i], statusEl));
+  }
+  const result = mergeAnalyzedResults(results);
 
   entryPhotoDetectedDate = result.date || null;
   if (result.date && getTripDates().includes(result.date)) document.getElementById('entry-date').value = result.date;
@@ -2276,16 +2385,24 @@ document.getElementById('entry-photo-input').addEventListener('change', async (e
     document.getElementById('entry-cost-currency').value = result.currency || 'VND';
   }
   if (result.items.length) document.getElementById('entry-memo').value = formatReceiptItemsForMemo(result.items);
-  pendingEntryPhoto = { thumb: result.thumb, meta: result.meta };
+  results.forEach(r => pendingEntryPhotos.push({ thumb: r.thumb, meta: r.meta }));
+  renderEntryPhotoThumbs();
 });
 
 document.getElementById('expense-photo-btn').addEventListener('click', () => document.getElementById('expense-photo-input').click());
 document.getElementById('expense-photo-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
+  const files = Array.from(e.target.files);
   e.target.value = '';
-  if (!file) return;
-  offerSaveCapturedPhoto(file);
-  const result = await analyzePhoto(file, document.getElementById('expense-photo-status'));
+  if (!files.length) return;
+  files.forEach(f => offerSaveCapturedPhoto(f));
+
+  const statusEl = document.getElementById('expense-photo-status');
+  const results = [];
+  for (let i = 0; i < files.length; i++) {
+    if (files.length > 1) statusEl.textContent = `사진 ${i + 1}/${files.length}장 분석 중...`;
+    results.push(await analyzePhoto(files[i], statusEl));
+  }
+  const result = mergeAnalyzedResults(results);
 
   expensePhotoDetectedDate = result.date || null;
   document.getElementById('expense-date').value = (result.date && getTripDates().includes(result.date)) ? result.date : (viewDate || getTripDates()[0]);
@@ -2309,6 +2426,8 @@ document.getElementById('expense-photo-input').addEventListener('change', async 
     if (result.description && result.description !== place) memoParts.push(result.description);
     if (memoParts.length) document.getElementById('expense-memo').value = memoParts.join(' · ');
   }
+  results.forEach(r => pendingExpensePhotos.push({ thumb: r.thumb, meta: r.meta }));
+  renderExpensePhotoThumbs();
 });
 
 /* ============================== 카메라 번역 ============================== */

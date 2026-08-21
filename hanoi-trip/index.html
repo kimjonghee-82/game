@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="여행 플래너">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=49">
+<link rel="stylesheet" href="style.css?v=50">
 </head>
 <body>
 
@@ -186,6 +186,15 @@
   </div>
 </div>
 
+<!-- 일정/비용에 첨부된 사진 전체 보기 -->
+<div id="modal-photo-gallery" class="modal hidden">
+  <div class="modal-title-row">
+    <h3>사진</h3>
+    <button id="photo-gallery-close-btn" type="button" class="icon-btn" title="닫기">✕</button>
+  </div>
+  <div id="photo-gallery-grid" class="photo-gallery-grid"></div>
+</div>
+
 <!-- 일정 항목 편집 -->
 <div id="modal-entry" class="modal hidden">
   <div class="modal-title-row">
@@ -193,7 +202,8 @@
     <button id="entry-photo-btn" type="button" class="icon-btn" title="사진으로 채우기">📷</button>
   </div>
   <span id="entry-photo-status" class="status-text"></span>
-  <input type="file" id="entry-photo-input" accept="image/*" class="hidden">
+  <div id="entry-photo-thumbs" class="photo-thumb-strip"></div>
+  <input type="file" id="entry-photo-input" accept="image/*" multiple class="hidden">
   <input type="hidden" id="entry-id">
 
   <label>날짜 <select id="entry-date"></select></label>
@@ -244,7 +254,8 @@
     <button id="expense-photo-btn" type="button" class="icon-btn" title="영수증으로 채우기">📷</button>
   </div>
   <span id="expense-photo-status" class="status-text"></span>
-  <input type="file" id="expense-photo-input" accept="image/*" class="hidden">
+  <div id="expense-photo-thumbs" class="photo-thumb-strip"></div>
+  <input type="file" id="expense-photo-input" accept="image/*" multiple class="hidden">
   <input type="hidden" id="expense-id">
 
   <label>날짜 <input type="date" id="expense-date"></label>
@@ -437,6 +448,6 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script src="app.js?v=68"></script>
+<script src="app.js?v=69"></script>
 </body>
 </html>
