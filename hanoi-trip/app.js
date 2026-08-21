@@ -2144,7 +2144,10 @@ async function reverseGeocode(lat, lon) {
 }
 
 const RECEIPT_ANALYSIS_PROMPT = `당신은 베트남(하노이/사파) 여행 중 촬영하거나 캡처한 사진을 분석하는 도우미입니다. 사진은 영수증, 입장권/탑승권, 예약 확인서, 스크린샷, 간판, 메뉴판 등일 수 있고 한국어/영어/베트남어가 섞여 있을 수 있습니다.
-사진 속 글자와 내용을 직접 읽고 상황에 맞게 이해해서, 아래 JSON 형식으로만 답변하세요 (다른 설명 없이 JSON만):
+사진이 여러 장 함께 주어질 수 있습니다. 다음 두 경우를 사진 내용을 보고 직접 판단해서 구분하세요:
+- 품목이 많아 영수증 하나가 여러 장에 나뉘어 찍힌 경우(예: 앞부분 사진엔 품목 일부만 있고 합계가 없는데, 뒷부분 사진에 나머지 품목과 최종 합계가 있는 경우) — 이때는 전체를 하나의 영수증으로 보고, 모든 사진의 품목을 중복 없이 합쳐 items에 담고, amount에는 최종 합계를 "한 번만" 반영하세요. 사진마다 부분 합계를 계산해서 서로 더하면 안 됩니다.
+- 서로 다른 별개의 영수증 여러 장인 경우 — 각 영수증의 금액을 모두 더한 총합을 amount에 넣고, 품목도 전부 합쳐서 items에 넣으세요.
+사진 속 글자와 내용을 직접 읽고 상황에 맞게 이해해서, 아래 JSON 형식으로만 답변하세요 (다른 설명 없이 JSON만, 여러 장이 주어져도 답은 아래 형식 하나로만):
 {
   "is_receipt": true 또는 false (영수증/입장권/티켓/예약확인서처럼 비용이 발생한 내역으로 보이면 true),
   "vendor": "가게/장소/서비스 이름(상호) 또는 null",
@@ -2183,7 +2186,11 @@ function stripThinkTags(rawText) {
     : rawText.slice(0, rawText.indexOf('<think>'));
 }
 
-async function analyzeImageWithGroqVision(dataUrl, apiKey, model, prompt) {
+/** dataUrlOrUrls는 문자열 하나(사진 한 장) 또는 문자열 배열(사진 여러 장을 한 번에 함께 분석)
+    둘 다 받음 — 여러 장을 한 메시지에 같이 보내면, 하나의 영수증이 여러 장으로 나뉜 경우와
+    서로 다른 여러 영수증인 경우를 모델이 사진들을 서로 비교하며 직접 판단할 수 있음. */
+async function analyzeImageWithGroqVision(dataUrlOrUrls, apiKey, model, prompt) {
+  const urls = Array.isArray(dataUrlOrUrls) ? dataUrlOrUrls : [dataUrlOrUrls];
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -2200,7 +2207,7 @@ async function analyzeImageWithGroqVision(dataUrl, apiKey, model, prompt) {
           role: 'user',
           content: [
             { type: 'text', text: prompt || RECEIPT_ANALYSIS_PROMPT },
-            { type: 'image_url', image_url: { url: dataUrl } },
+            ...urls.map(url => ({ type: 'image_url', image_url: { url } })),
           ],
         },
       ],
@@ -2282,24 +2289,64 @@ function formatReceiptItemsForMemo(items) {
   return items.map(it => `${it.name} ${fmtAmount(it.price)}`.trim()).join('\n');
 }
 
-/** 사진 여러 장을 한 번에 등록했을 때, 각각 analyzePhoto()로 분석한 결과를 하나로 합침.
-    날짜/상호/장소 등은 먼저 값이 있는 사진의 것을 쓰고, 금액은 사진마다 별도 영수증이라고
-    보고 모두 더하며, 품목 내역은 전부 이어붙임. */
-function mergeAnalyzedResults(results) {
-  const firstTruthy = (key) => results.map(r => r[key]).find(v => v) || null;
-  const amounts = results.map(r => r.amount).filter(a => a !== null && a !== undefined);
+/** 사진 여러 장을 한 번에 등록했을 때 쓰는 버전 — 각 사진을 따로따로 분석해서 나중에 억지로
+    합치면(예: 금액을 무조건 다 더하면), 품목이 많아 영수증 한 장이 여러 사진으로 나뉜 경우
+    같은 항목이 중복 계산될 수 있음. 그래서 사진들을 전부 한 번의 AI 요청에 함께 실어 보내서,
+    "같은 영수증이 나뉜 것인지 서로 다른 영수증인지"를 모델이 사진들을 같이 보고 직접
+    판단해 하나의 결과로 답하게 함. */
+async function analyzePhotosCombined(files, statusEl) {
+  const settings = loadSettings();
+  const setStatus = (t) => { if (statusEl) statusEl.textContent = t; };
+
+  setStatus(files.length > 1 ? `이미지 ${files.length}장 처리 중...` : '이미지 처리 중...');
+  const resizedList = [];
+  const thumbList = [];
+  const metaList = [];
+  for (const file of files) {
+    resizedList.push(await resizeImageToDataUrl(file, 1024, 0.75));
+    thumbList.push(await resizeImageToDataUrl(file, 400, 0.6));
+    metaList.push(await readExifInfo(file));
+  }
+  const exif = metaList[0];
+
+  let vision = null;
+  let aiError = null;
+  if (settings.groqApiKey) {
+    setStatus(files.length > 1 ? 'AI가 사진들을 함께 분석하는 중...' : 'AI가 사진을 분석하는 중...');
+    try {
+      const model = resolveGroqVisionModel(settings.groqVisionModel);
+      vision = await analyzeImageWithGroqVision(resizedList, settings.groqApiKey, model);
+    } catch (e) {
+      aiError = e.message;
+      toast('AI 분석 실패: ' + e.message, 5000);
+    }
+  }
+
+  let geoPlace = null;
+  if ((!vision || !vision.place) && exif.lat && exif.lon) {
+    setStatus('위치 정보 확인 중...');
+    geoPlace = await reverseGeocode(exif.lat, exif.lon);
+  }
+
+  setStatus(vision
+    ? 'AI 분석 완료 — 내용을 확인하고 저장하세요'
+    : aiError
+      ? `AI 분석 실패: ${aiError} — ${exif.takenAt || exif.lat ? '메타데이터로 채웠습니다' : '직접 입력해주세요'}`
+      : (exif.takenAt || exif.lat ? '사진 메타데이터로 채웠습니다 — 확인 후 저장하세요' : '인식된 정보가 없습니다. 직접 입력해주세요'));
+
   return {
-    date: firstTruthy('date'),
-    time: firstTruthy('time'),
-    vendor: firstTruthy('vendor') || '',
-    place: firstTruthy('place') || '',
-    description: firstTruthy('description') || '',
-    category: firstTruthy('category'),
-    isReceipt: results.some(r => r.isReceipt),
-    amount: amounts.length ? amounts.reduce((a, b) => a + b, 0) : null,
-    currency: firstTruthy('currency'),
-    website: firstTruthy('website') || '',
-    items: results.flatMap(r => r.items || []),
+    date: (vision && vision.date_on_receipt) || (exif.takenAt && exif.takenAt.date) || null,
+    time: (vision && vision.time_on_receipt) || (exif.takenAt && exif.takenAt.time) || null,
+    vendor: (vision && vision.vendor) || '',
+    place: (vision && vision.place) || geoPlace || '',
+    description: (vision && vision.description) || '',
+    category: (vision && vision.category) || null,
+    isReceipt: !!(vision && vision.is_receipt),
+    amount: (vision && vision.amount) || null,
+    currency: (vision && vision.currency) || null,
+    website: (vision && vision.website) || '',
+    items: (vision && Array.isArray(vision.items)) ? vision.items.filter(it => it && it.name) : [],
+    photos: files.map((_, i) => ({ thumb: thumbList[i], meta: metaList[i] })),
   };
 }
 
@@ -2364,12 +2411,7 @@ document.getElementById('entry-photo-input').addEventListener('change', async (e
   files.forEach(f => offerSaveCapturedPhoto(f));
 
   const statusEl = document.getElementById('entry-photo-status');
-  const results = [];
-  for (let i = 0; i < files.length; i++) {
-    if (files.length > 1) statusEl.textContent = `사진 ${i + 1}/${files.length}장 분석 중...`;
-    results.push(await analyzePhoto(files[i], statusEl));
-  }
-  const result = mergeAnalyzedResults(results);
+  const result = await analyzePhotosCombined(files, statusEl);
 
   entryPhotoDetectedDate = result.date || null;
   if (result.date && getTripDates().includes(result.date)) document.getElementById('entry-date').value = result.date;
@@ -2385,7 +2427,7 @@ document.getElementById('entry-photo-input').addEventListener('change', async (e
     document.getElementById('entry-cost-currency').value = result.currency || 'VND';
   }
   if (result.items.length) document.getElementById('entry-memo').value = formatReceiptItemsForMemo(result.items);
-  results.forEach(r => pendingEntryPhotos.push({ thumb: r.thumb, meta: r.meta }));
+  pendingEntryPhotos.push(...result.photos);
   renderEntryPhotoThumbs();
 });
 
@@ -2397,12 +2439,7 @@ document.getElementById('expense-photo-input').addEventListener('change', async 
   files.forEach(f => offerSaveCapturedPhoto(f));
 
   const statusEl = document.getElementById('expense-photo-status');
-  const results = [];
-  for (let i = 0; i < files.length; i++) {
-    if (files.length > 1) statusEl.textContent = `사진 ${i + 1}/${files.length}장 분석 중...`;
-    results.push(await analyzePhoto(files[i], statusEl));
-  }
-  const result = mergeAnalyzedResults(results);
+  const result = await analyzePhotosCombined(files, statusEl);
 
   expensePhotoDetectedDate = result.date || null;
   document.getElementById('expense-date').value = (result.date && getTripDates().includes(result.date)) ? result.date : (viewDate || getTripDates()[0]);
@@ -2426,7 +2463,7 @@ document.getElementById('expense-photo-input').addEventListener('change', async 
     if (result.description && result.description !== place) memoParts.push(result.description);
     if (memoParts.length) document.getElementById('expense-memo').value = memoParts.join(' · ');
   }
-  results.forEach(r => pendingExpensePhotos.push({ thumb: r.thumb, meta: r.meta }));
+  pendingExpensePhotos.push(...result.photos);
   renderExpensePhotoThumbs();
 });
 
