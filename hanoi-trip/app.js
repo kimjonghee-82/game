@@ -1031,6 +1031,16 @@ function renderItineraryGrid() {
   document.getElementById('itinerary-status').textContent = `이 날 ${dayEntries.length}개 일정`;
 }
 
+/** 목록/카드에 메모를 다 펼쳐서 보여주면(특히 영수증 품목이 많을 때) 화면이 너무 복잡해지므로
+    앞 몇 줄만 미리보기로 보여줌 — 전체 내용은 항목을 탭해서 수정 화면을 열면 그대로 다 보임
+    (저장된 메모 자체는 그대로라 예전에 등록한 항목도 자동으로 같은 방식으로 보임). */
+function renderMemoPreview(memo, maxLines = 4) {
+  const lines = memo.split('\n');
+  if (lines.length <= maxLines) return escapeHtml(memo);
+  const rest = lines.length - maxLines;
+  return `${escapeHtml(lines.slice(0, maxLines).join('\n'))}<span class="tl-memo-more"> …외 ${rest}줄 (탭해서 전체 보기)</span>`;
+}
+
 function renderTimelineItem(e) {
   const costHtml = e.expenseId ? renderChipCost(e.expenseId) : '';
   const title = e.vendor || e.text;
@@ -1043,7 +1053,7 @@ function renderTimelineItem(e) {
     <div class="tl-content">
       <div class="tl-title">${escapeHtml(title)}${costHtml}</div>
       ${subChips.length ? `<div class="tl-sub">${subChips.join('')}</div>` : ''}
-      ${e.memo ? `<div class="tl-memo">${escapeHtml(e.memo)}</div>` : ''}
+      ${e.memo ? `<div class="tl-memo">${renderMemoPreview(e.memo)}</div>` : ''}
       ${renderPhotoStrip(entryPhotos(e))}
     </div>
   </div>`;
@@ -1300,7 +1310,7 @@ function renderExpenseRow(exp) {
       <div class="exp-main">
         <div class="exp-title">${escapeHtml(exp.place || '')}</div>
         <div class="exp-time">${formatTimeAmPm(exp.time)}</div>
-        ${exp.memo ? `<div class="tl-memo">${escapeHtml(exp.memo)}</div>` : ''}
+        ${exp.memo ? `<div class="tl-memo">${renderMemoPreview(exp.memo)}</div>` : ''}
         ${renderPhotoStrip(entryPhotos(exp))}
       </div>
       <div class="exp-amounts">
