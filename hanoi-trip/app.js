@@ -2979,6 +2979,199 @@ async function writeItineraryToSheet(accessToken) {
   }
 }
 
+/* ============================== 엑셀 파일로 내보내기 ============================== */
+
+const EXPENSE_CATEGORY_COLOR_ARGB = {
+  '교통': 'FFD6EAF8', '식사': 'FFFCF3CF', '관광/입장료': 'FFD5F5E3',
+  '숙박': 'FFEBDEF0', '쇼핑': 'FFFADBD8', '기타': 'FFEAEDED',
+};
+function krwOf(exp) { return exp.currency === 'KRW' ? (exp.amount || 0) : (exp.krw || 0); }
+
+/** Chart.js로 그린 차트를 캔버스에 렌더링해서 PNG data URL로 반환 (엑셀에 이미지로 박아넣기 위함).
+    DOM에 붙지 않은 캔버스라 responsive:true(기본값)로 두면 크기가 0으로 잡히므로 반드시 꺼야 함. */
+function renderChartPng(config, width, height) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  config.options = { ...(config.options || {}), responsive: false, maintainAspectRatio: false, animation: false, devicePixelRatio: 1 };
+  const chart = new Chart(canvas, config);
+  const dataUrl = canvas.toDataURL('image/png');
+  chart.destroy();
+  return dataUrl;
+}
+
+function styleHeaderRow(row) {
+  row.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC0392B' } };
+  row.alignment = { vertical: 'middle', horizontal: 'center' };
+  row.height = 20;
+  row.eachCell(cell => {
+    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' }, bottom: { style: 'thin' } };
+  });
+}
+function borderRow(row) {
+  row.eachCell(cell => {
+    cell.border = { top: { style: 'hair' }, left: { style: 'hair' }, right: { style: 'hair' }, bottom: { style: 'hair' } };
+  });
+}
+
+async function exportTripToExcel() {
+  if (!window.ExcelJS || !window.Chart) {
+    toast('엑셀 내보내기 라이브러리를 아직 불러오는 중입니다. 잠시 후 다시 시도해주세요.', 4000);
+    return;
+  }
+  toast('엑셀 파일 만드는 중...');
+
+  const dates = getTripDates();
+  const entries = loadItinerary().slice().sort((a, b) => a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date));
+  const expenses = loadExpenses().slice().sort((a, b) => a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date));
+
+  const categoryTotals = EXPENSE_CATEGORIES.map(cat => ({
+    category: cat,
+    total: expenses.filter(e => e.category === cat).reduce((sum, e) => sum + krwOf(e), 0),
+    count: expenses.filter(e => e.category === cat).length,
+  })).filter(row => row.count > 0);
+  const dailyTotals = dates.map(d => ({
+    date: d,
+    total: expenses.filter(e => e.date === d).reduce((sum, e) => sum + krwOf(e), 0),
+  }));
+  const totalSpend = expenses.reduce((sum, e) => sum + krwOf(e), 0);
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = '여행 플래너';
+  wb.created = new Date();
+
+  /* ---------------- 요약 시트 ---------------- */
+  const sumSheet = wb.addWorksheet('요약');
+  sumSheet.columns = [{ width: 16 }, { width: 16 }, { width: 12 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }];
+  sumSheet.mergeCells('A1:C1');
+  sumSheet.getCell('A1').value = '하노이·사파 여행 요약';
+  sumSheet.getCell('A1').font = { bold: true, size: 16 };
+  sumSheet.getCell('A2').value = `여행 기간: ${dates[0] || ''} ~ ${dates[dates.length - 1] || ''}`;
+  sumSheet.getCell('A2').font = { color: { argb: 'FF767676' } };
+  sumSheet.mergeCells('A4:B4');
+  sumSheet.getCell('A4').value = '총 지출 (원화 환산)';
+  sumSheet.getCell('A4').font = { bold: true };
+  sumSheet.getCell('C4').value = totalSpend;
+  sumSheet.getCell('C4').numFmt = '#,##0"원"';
+  sumSheet.getCell('C4').font = { bold: true, size: 13, color: { argb: 'FFC0392B' } };
+
+  sumSheet.getCell('A6').value = '분류별 지출';
+  sumSheet.getCell('A6').font = { bold: true };
+  const catHeaderRow = sumSheet.getRow(7);
+  catHeaderRow.values = ['분류', '금액(원)', '건수'];
+  styleHeaderRow(catHeaderRow);
+  categoryTotals.forEach((row, i) => {
+    const r = sumSheet.getRow(8 + i);
+    r.values = [row.category, row.total, row.count];
+    r.getCell(2).numFmt = '#,##0';
+    r.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXPENSE_CATEGORY_COLOR_ARGB[row.category] || 'FFEAEDED' } };
+    borderRow(r);
+  });
+
+  const dailyStartRow = 9 + categoryTotals.length;
+  sumSheet.getCell(`A${dailyStartRow}`).value = '날짜별 지출';
+  sumSheet.getCell(`A${dailyStartRow}`).font = { bold: true };
+  const dayHeaderRow = sumSheet.getRow(dailyStartRow + 1);
+  dayHeaderRow.values = ['날짜', '금액(원)'];
+  styleHeaderRow(dayHeaderRow);
+  dailyTotals.forEach((row, i) => {
+    const r = sumSheet.getRow(dailyStartRow + 2 + i);
+    r.values = [formatDateLabel(row.date), row.total];
+    r.getCell(2).numFmt = '#,##0';
+    borderRow(r);
+  });
+
+  if (categoryTotals.length) {
+    const catChartUrl = renderChartPng({
+      type: 'bar',
+      data: {
+        labels: categoryTotals.map(r => r.category),
+        datasets: [{ label: '분류별 지출(원)', data: categoryTotals.map(r => r.total), backgroundColor: '#c0392b' }],
+      },
+      options: { plugins: { legend: { display: false }, title: { display: true, text: '분류별 지출' } } },
+    }, 640, 380);
+    const catImgId = wb.addImage({ base64: catChartUrl.split(',')[1], extension: 'png' });
+    sumSheet.addImage(catImgId, { tl: { col: 4, row: 0 }, ext: { width: 640, height: 380 } });
+  }
+  if (dailyTotals.some(r => r.total > 0)) {
+    const dailyChartUrl = renderChartPng({
+      type: 'line',
+      data: {
+        labels: dailyTotals.map(r => formatDateLabel(r.date)),
+        datasets: [{ label: '날짜별 지출(원)', data: dailyTotals.map(r => r.total), borderColor: '#c0392b', backgroundColor: 'rgba(192,57,38,0.15)', fill: true, tension: 0.25 }],
+      },
+      options: { plugins: { legend: { display: false }, title: { display: true, text: '날짜별 지출 추이' } } },
+    }, 640, 380);
+    const dailyImgId = wb.addImage({ base64: dailyChartUrl.split(',')[1], extension: 'png' });
+    sumSheet.addImage(dailyImgId, { tl: { col: 4, row: 24 }, ext: { width: 640, height: 380 } });
+  }
+
+  /* ---------------- 일정 시트 ---------------- */
+  const itinSheet = wb.addWorksheet('일정');
+  itinSheet.columns = [
+    { header: '날짜', width: 12 }, { header: '시간', width: 8 }, { header: '분류', width: 10 },
+    { header: '상호', width: 20 }, { header: '내용', width: 22 }, { header: '장소/주소', width: 24 },
+    { header: '메모', width: 30 }, { header: '연결비용', width: 12 }, { header: '통화', width: 8 }, { header: '사진', width: 6 },
+  ];
+  styleHeaderRow(itinSheet.getRow(1));
+  itinSheet.views = [{ state: 'frozen', ySplit: 1 }];
+  entries.forEach(e => {
+    const exp = e.expenseId ? expenses.find(x => x.id === e.expenseId) : null;
+    const photos = entryPhotos(e);
+    const r = itinSheet.addRow([
+      formatDateLabel(e.date), e.time, e.category, e.vendor || '', e.text || '', e.place || '',
+      e.memo || '', exp ? exp.amount : '', exp ? exp.currency : '', photos.length ? `📷${photos.length}` : '',
+    ]);
+    if (exp) r.getCell(8).numFmt = '#,##0';
+    r.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXPENSE_CATEGORY_COLOR_ARGB[ITIN_TO_EXPENSE_CATEGORY[e.category]] || 'FFEAEDED' } };
+    r.getCell(7).alignment = { wrapText: true, vertical: 'top' };
+    borderRow(r);
+  });
+
+  /* ---------------- 비용 시트 ---------------- */
+  const expSheet = wb.addWorksheet('비용');
+  expSheet.columns = [
+    { header: '날짜', width: 12 }, { header: '시간', width: 8 }, { header: '장소/항목', width: 22 },
+    { header: '분류', width: 10 }, { header: '금액', width: 12 }, { header: '통화', width: 8 },
+    { header: '원화환산', width: 12 }, { header: '메모', width: 30 }, { header: '사진', width: 6 },
+  ];
+  styleHeaderRow(expSheet.getRow(1));
+  expSheet.views = [{ state: 'frozen', ySplit: 1 }];
+  expenses.forEach(exp => {
+    const photos = entryPhotos(exp);
+    const r = expSheet.addRow([
+      formatDateLabel(exp.date), formatTimeAmPm(exp.time), exp.place || '', exp.category, exp.amount, exp.currency,
+      krwOf(exp), exp.memo || '', photos.length ? `📷${photos.length}` : '',
+    ]);
+    r.getCell(5).numFmt = '#,##0';
+    r.getCell(7).numFmt = '#,##0';
+    r.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXPENSE_CATEGORY_COLOR_ARGB[exp.category] || 'FFEAEDED' } };
+    r.getCell(8).alignment = { wrapText: true, vertical: 'top' };
+    borderRow(r);
+  });
+  expSheet.addRow([]);
+  const totalRow = expSheet.addRow(['', '', '', '', '', '합계', totalSpend]);
+  totalRow.font = { bold: true };
+  totalRow.getCell(7).numFmt = '#,##0';
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `하노이사파여행_${(dates[0] || '').replaceAll('-', '')}_${(dates[dates.length - 1] || '').replaceAll('-', '')}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+  toast('엑셀 파일을 다운로드했습니다');
+}
+
+document.getElementById('btn-export-excel').addEventListener('click', () => {
+  exportTripToExcel().catch(e => toast('엑셀 내보내기 실패: ' + e.message, 5000));
+});
+
 /* ================================ 설정 ================================ */
 
 document.getElementById('settings-translate-lang').innerHTML =

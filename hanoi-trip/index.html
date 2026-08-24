@@ -405,6 +405,12 @@
     <select id="settings-translate-lang"></select>
   </label>
 
+  <h4>엑셀 파일로 내보내기</h4>
+  <p class="help-text">일정·비용 전체 데이터를 엑셀(.xlsx) 파일로 내려받습니다. 요약(분류별·날짜별 지출 차트 포함), 일정 상세, 비용 상세가 각각 다른 시트로 나뉘어 저장됩니다. 별도 설정 없이 바로 사용할 수 있습니다.</p>
+  <div class="modal-actions" style="margin-top:-4px;margin-bottom:14px">
+    <button id="btn-export-excel" class="btn small">📥 엑셀 파일 다운로드</button>
+  </div>
+
   <h4>구글 시트 연동 (OAuth 클라이언트 ID)</h4>
   <p class="help-text">Google Cloud Console에서 발급받은 <b>OAuth 2.0 클라이언트 ID(웹 애플리케이션)</b>를 입력하세요. 발급 방법은 채팅 안내를 참고하세요.</p>
   <input type="text" id="settings-google-client-id" placeholder="xxxxxxxx.apps.googleusercontent.com">
@@ -448,6 +454,8 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script src="app.js?v=76"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="app.js?v=77"></script>
 </body>
 </html>
