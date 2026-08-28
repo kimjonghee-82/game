@@ -427,11 +427,20 @@ function saveSyncBaseline(v) { save(SYNC_BASELINE_KEY, v); }
 /** local/remote 둘 다 있는 항목 중 어느 쪽을 쓸지 고름. baseline(마지막으로 동기화됐던 상태)과
     비교해서 바뀐 쪽을 우선하고, 둘 다 바뀌었으면(동시 편집) 이 기기 쪽을 우선함. */
 function pickNewerItem(localItem, remoteItem, baselineItem) {
-  const localChanged = JSON.stringify(localItem) !== JSON.stringify(baselineItem);
-  const remoteChanged = JSON.stringify(remoteItem) !== JSON.stringify(baselineItem);
-  if (localChanged && !remoteChanged) return localItem;
-  if (!localChanged && remoteChanged) return remoteItem;
-  return localItem;
+  // photos(로컬 전용, 동기화 안 됨)는 "바뀐 것"에 안 쳐줘야 함 — 안 그러면 사진만 붙어 있어도
+  // 이 항목이 "로컬에서 바뀐 것"으로 잘못 판단돼서, 실제로는 상대 기기가 내용을 고쳤을 때도
+  // 이 기기의 (사진 때문에 그저 달라 보이는) 옛날 내용이 이겨버림
+  const withoutPhotos = (item) => { if (!item) return item; const { photos, ...rest } = item; return rest; };
+  const localChanged = JSON.stringify(withoutPhotos(localItem)) !== JSON.stringify(withoutPhotos(baselineItem));
+  const remoteChanged = JSON.stringify(withoutPhotos(remoteItem)) !== JSON.stringify(withoutPhotos(baselineItem));
+  let winner;
+  if (localChanged && !remoteChanged) winner = localItem;
+  else if (!localChanged && remoteChanged) winner = remoteItem;
+  else winner = localItem;
+  // photos는 동기화 대상에서 제외되는(기기 로컬 전용) 필드라 remote 쪽엔 애초에 없음 —
+  // 다른 필드 때문에 remote가 이기더라도 이 기기에 있던 사진은 지우지 않고 그대로 유지함
+  if (localItem && localItem.photos && winner !== localItem) winner = { ...winner, photos: localItem.photos };
+  return winner;
 }
 
 /** id 기준 3-way 병합. baseline에 있었는데 한쪽에만 없으면 "그쪽에서 삭제한 것"으로 보고
@@ -513,8 +522,11 @@ function applyRemoteMerge(data) {
     || JSON.stringify(mergedReference) !== JSON.stringify(loadReference())
     || JSON.stringify(mergedVideos) !== JSON.stringify(loadVideos())
     || JSON.stringify(mergedDocuments) !== JSON.stringify(loadDocuments());
-  const remoteStale = JSON.stringify(mergedItinerary) !== JSON.stringify(data.itinerary || [])
-    || JSON.stringify(mergedExpenses) !== JSON.stringify(data.expenses || [])
+  // itinerary/expenses는 photos(기기 로컬 전용, 동기화 안 함)를 뺀 상태로 비교해야 함 —
+  // 안 그러면 사진이 있는 항목이 하나라도 있으면 "서버가 뒤처졌다"고 매번 잘못 판단해서
+  // push → 서버 반영(사진 없이) → 다시 "뒤처졌다" 판단 → push ... 가 끝없이 반복됨
+  const remoteStale = JSON.stringify(stripPhotosForSync(mergedItinerary)) !== JSON.stringify(data.itinerary || [])
+    || JSON.stringify(stripPhotosForSync(mergedExpenses)) !== JSON.stringify(data.expenses || [])
     || JSON.stringify(mergedReference) !== JSON.stringify(data.reference || {})
     || JSON.stringify(mergedVideos) !== JSON.stringify(data.otherVideos || {})
     || JSON.stringify(mergedDocuments) !== JSON.stringify(data.documents || []);
@@ -569,6 +581,14 @@ function attachSyncListener() {
     일정을 등록할 때 한쪽이 사라지는 원인이 바로 이것. runTransaction은 커밋 시점에 문서가
     읽었을 때와 달라졌으면 병합 함수를 최신 데이터로 자동 재실행해주므로, 두 기기가 동시에 써도
     한쪽이 다른 쪽을 조용히 지우는 일이 없음. */
+/** 사진(photos)은 기기 로컬 전용 필드라 동기화 문서에서 제외함 — Firestore 문서는 1개당
+    1MB 제한이 있는데, 여행 내내 쌓인 영수증 사진들을 전부 base64로 문서 안에 넣으면 이 제한을
+    쉽게 넘어서서 push 자체가 통째로 실패함(그 순간의 일정/비용 등록까지 전부 동기화 안 되는
+    상태로 이어짐). photos만 빼면 나머지 텍스트 데이터는 사실상 이 제한에 걸릴 일이 없음. */
+function stripPhotosForSync(list) {
+  return (list || []).map(({ photos, ...rest }) => rest);
+}
+
 function pushSyncNow() {
   if (!syncDb) return Promise.reject(new Error('동기화가 연결되지 않았습니다'));
   const docRef = syncDb.collection('trips').doc(getTripCode());
@@ -578,8 +598,8 @@ function pushSyncNow() {
       const remote = snap.exists ? snap.data() : {};
       applyRemoteMerge(remote); // 트랜잭션이 방금 읽은 최신 서버 상태와 병합해서 로컬을 정리
       const payload = {
-        itinerary: loadItinerary(),
-        expenses: loadExpenses(),
+        itinerary: stripPhotosForSync(loadItinerary()),
+        expenses: stripPhotosForSync(loadExpenses()),
         reference: loadReference(),
         otherVideos: loadVideos(),
         documents: loadDocuments(),
@@ -588,7 +608,14 @@ function pushSyncNow() {
       tx.set(docRef, { ...payload, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
     });
   }).then(() => saveSyncBaseline(lastPayload)) // 트랜잭션이 실제로 커밋된 뒤에만 baseline을 이 상태로 갱신
-    .catch(e => { console.error('sync push failed', e); setSyncStatus('error'); throw e; });
+    .catch(e => {
+      console.error('sync push failed', e);
+      setSyncStatus('error');
+      toast('⚠️ 동기화 저장에 실패했어요. 잠시 후 자동으로 다시 시도합니다. (' + (e && e.message ? e.message.slice(0, 80) : '') + ')', 6000);
+      clearTimeout(syncPushTimer);
+      syncPushTimer = setTimeout(pushSyncNow, 8000); // 별도 변경이 없어도 실패하면 잠시 뒤 재시도
+      throw e;
+    });
 }
 
 function scheduleSyncPush() {
