@@ -19,6 +19,22 @@ const IEQ = { 5: 55, 6: 75, 7: 90, 8: 105 };   // 공업 고단계 교육 요건
 const CEQ = { 7: 70, 8: 90 };                  // 상업 초고층 교육 요건
 const RANKS = [[0, '마을'], [2000, '소도시'], [10000, '도시'], [50000, '대도시'], [250000, '광역시'], [1000000, '메트로폴리스'], [5000000, '메갈로폴리스'], [10000000, '세계 도시']];
 function cityRank(p) { let r = RANKS[0][1]; for (const [n, name] of RANKS) if (p >= n) r = name; return r; }
+const MAXH = 8, STEP = 8;   // 지형 최고 높이, 한 단 높이(px)
+const SECT = {   // 산업 업종
+  agri:    { n: '농업', c: 10, pol: 0, wp: 0.5, hi: 0, max: 2, col: '#c5e1a5' },
+  textile: { n: '섬유·경공업', c: 25, pol: 1.8, wp: 1.2, hi: 0 },
+  steel:   { n: '철강', c: 40, pol: 5, wp: 2.5, hi: 0, port: 1 },
+  petro:   { n: '석유화학', c: 55, pol: 6, wp: 3, hi: 0, port: 1 },
+  auto:    { n: '자동차', c: 75, pol: 3, wp: 1.5, hi: 0 },
+  electro: { n: '전자', c: 95, pol: 0.8, wp: 0.6, hi: 1 },
+  bio:     { n: '바이오', c: 115, pol: 0.4, wp: 0.8, hi: 1 },
+  aero:    { n: '항공우주', c: 130, pol: 0.6, wp: 0.3, hi: 1, air: 1 },
+};
+const SECKEYS = Object.keys(SECT);
+const secOf = t => SECT[t.sec] || SECT.textile;
+const occFor = t => Math.round(OCC[t.z][t.lvl] * (t.z === 'I' && t.sec === 'agri' ? 0.5 : 1));
+const NB_NAMES = ['한빛시', '솔내시', '가람시', '누리시'];
+const SIDE_NAMES = ['북동쪽', '남동쪽', '남서쪽', '북서쪽'];
 const ZCOL = { R: '#4caf50', C: '#2196f3', I: '#ffc107' };
 const ZNAME = { R: '주거', C: '상업', I: '공업' };
 const DNAME = ['', '저밀도', '중밀도', '고밀도'];
@@ -27,7 +43,18 @@ const BLD = {
   police:   { n: '경찰서', sz: 2, cost: 500, mt: 25, dept: 'police', r: 12, use: 3, col: '#4a6fb5', h: 22, ico: '🚓', d: '범죄 감소' },
   fire:     { n: '소방서', sz: 2, cost: 500, mt: 25, dept: 'fire', r: 12, use: 3, col: '#c0392b', h: 22, ico: '🚒', d: '화재 예방·진압' },
   hospital: { n: '병원', sz: 2, cost: 900, mt: 40, dept: 'health', r: 14, use: 4, col: '#e8eef0', h: 34, ico: '🏥', d: '기대수명·주거 선호 상승' },
-  school:   { n: '학교', sz: 2, cost: 600, mt: 30, dept: 'edu', r: 10, use: 3, col: '#d4a373', h: 18, ico: '🏫', d: '교육 수준 상승' },
+  school:   { n: '초등학교', sz: 2, cost: 600, mt: 30, dept: 'edu', r: 9, use: 3, col: '#d4a373', h: 16, ico: '🎒', w: 0.8, d: '기초 교육' },
+  highschool:{ n: '고등학교', sz: 2, cost: 1500, mt: 50, dept: 'edu', r: 13, use: 4, col: '#c97b4a', h: 22, ico: '🏫', w: 1.1, d: '중등 교육 · 교육 수준 상승' },
+  museum:   { n: '박물관', sz: 2, cost: 3000, mt: 25, dept: 'edu', r: 12, w: 0.5, lvb: 20, lr: 10, use: 3, col: '#bcaaa4', h: 24, ico: '🖼️', d: '지가·교육 수준 상승' },
+  jail:     { n: '교도소', sz: 3, cost: 5000, mt: 50, dept: 'police', jail: 4000, use: 5, lvb: -35, lr: 7, col: '#78909c', h: 18, ico: '⛓️', d: '수감 4,000명 · 주변 지가 하락' },
+  zoo:      { n: '동물원', sz: 3, cost: 6000, mt: 45, dept: 'rec', park: 30, pr: 6, lvb: 30, lr: 12, cboost: 0.05, col: '#a5d6a7', h: 8, ico: '🦁', d: '지가·상업 수요 상승' },
+  marina:   { n: '마리나', sz: 2, cost: 2500, mt: 15, dept: 'rec', needWater: 1, lvb: 40, lr: 9, col: '#e3f2fd', h: 6, ico: '⛵', d: '물가 지가 크게 상승' },
+  station:  { n: '기차역', sz: 1, cost: 800, mt: 12, dept: 'trans', railR: 9, needRail: 1, use: 2, col: '#8d6e63', h: 12, ico: '🚉', d: '철도로 다른 역·이웃 도시와 이어지면 반경 9칸 교통 45% 감소' },
+  wtreat:   { n: '하수처리장', sz: 2, cost: 2500, mt: 25, dept: 'water', treat: 25000, use: 5, col: '#26a69a', h: 12, ico: '🧪', d: '주민 25,000명분 하수 처리 · 수질 개선' },
+  toxic:    { n: '유해폐기물 처리장', sz: 2, cost: 0, mt: 0, dept: 'special', biz: 1, inc: [80, 0.004], pol: 45, wp: 80, lvb: -60, lr: 8, ap: -3, col: '#827717', h: 10, ico: '☣️', d: '사업 계약 시설' },
+  maxprison:{ n: '최고보안 교도소', sz: 3, cost: 0, mt: 0, dept: 'special', biz: 1, inc: [60, 0.003], jail: 12000, lvb: -40, lr: 8, ap: -2, col: '#546e7a', h: 20, ico: '🔒', d: '사업 계약 시설 · 수감 12,000명' },
+  missile:  { n: '미사일 기지', sz: 3, cost: 0, mt: 0, dept: 'special', biz: 1, inc: [100, 0.004], lvb: -30, lr: 9, ap: -4, col: '#6b8e23', h: 8, ico: '🚀', d: '사업 계약 시설' },
+  resort:   { n: '카지노 리조트', sz: 2, cost: 0, mt: 0, dept: 'special', biz: 1, inc: [70, 0.006], lvb: 10, lr: 6, crimeb: 20, cboost: 0.06, ap: -1, col: '#ad1457', h: 40, ico: '🎰', d: '사업 계약 시설 · 주변 범죄 증가' },
   univ:     { n: '대학교', sz: 3, cost: 3000, mt: 80, dept: 'edu', r: 20, use: 6, col: '#a0522d', h: 30, ico: '🎓', w: 1.4, d: '넓은 범위 교육, 첨단산업 유치' },
   library:  { n: '도서관', sz: 1, cost: 400, mt: 15, dept: 'edu', r: 8, use: 1, col: '#8e7cc3', h: 16, ico: '📚', w: 0.6, d: '소규모 교육 시설' },
   park:     { n: '소공원', sz: 1, cost: 60, mt: 1, dept: 'rec', park: 30, pr: 4, flat: 'park', d: '지가 상승, 오염 감소' },
@@ -62,7 +89,7 @@ const TOOLS = {
   inspect:  { n: '조회 / 이동', ico: '🔍', type: 'inspect', d: '드래그로 화면 이동, 클릭으로 정보 보기' },
   bulldoze: { n: '불도저', ico: '🚜', type: 'rect', cost: 1, d: '건물·도로·나무 철거' },
   road:     { n: '도로', ico: '🛣️', type: 'line', cost: 10, d: '물 위에 지으면 다리(60)' },
-  avenue:   { n: '대로', ico: '🛤️', type: 'line', cost: 25, d: '교통 용량 3배' },
+  avenue:   { n: '대로', ico: '🚗', type: 'line', cost: 25, d: '교통 용량 3배' },
   powerline:{ n: '송전선', ico: '🔌', type: 'line', cost: 5, d: '전력 연결' },
   R1: { n: '저밀도 주거', ico: '🏠', type: 'rect', cost: 5, zone: ['R', 1] },
   R2: { n: '중밀도 주거', ico: '🏘️', type: 'rect', cost: 10, zone: ['R', 2] },
@@ -78,6 +105,14 @@ const TOOLS = {
   d_fire:   { n: '화재 발생', ico: '🔥', type: 'click', d: '선택한 곳에 화재' },
   d_quake:  { n: '지진', ico: '🌋', type: 'click', d: '선택한 곳을 진원으로 지진' },
   d_tornado:{ n: '토네이도', ico: '🌪️', type: 'click', d: '선택한 곳에 토네이도' },
+  d_flood:  { n: '홍수', ico: '🌊', type: 'click', d: '물가 저지대에 홍수' },
+  d_meteor: { n: '운석 낙하', ico: '☄️', type: 'click', d: '선택한 곳에 운석' },
+  d_riot:   { n: '폭동', ico: '✊', type: 'click', d: '선택한 곳에서 폭동' },
+  raise:    { n: '땅 올리기', ico: '⛰️', type: 'rect', cost: 15, d: '한 단 올림 · 물을 메우면 40' },
+  lower:    { n: '땅 내리기', ico: '🕳️', type: 'rect', cost: 15, d: '한 단 내림 · 가장 낮은 땅은 물이 됨(40)' },
+  level:    { n: '평탄화', ico: '📏', type: 'rect', cost: 15, d: '드래그 시작 지점 높이로 맞춤 (단당 15)' },
+  hwy:      { n: '고속도로', ico: '🛣️', type: 'line', cost: 80, d: '용량 매우 큼 · 구역에 직접 연결되지 않음' },
+  rail:     { n: '철도', ico: '🛤️', type: 'line', cost: 25, d: '기차역끼리 연결 · 도로와 교차 가능' },
 };
 for (const k in BLD) {
   const b = BLD[k];
@@ -87,15 +122,16 @@ TOOLS.tower.ico = '🚰';
 
 const CATS = [
   { ico: '🔍', n: '기본', tools: ['inspect', 'bulldoze', 'tree'] },
-  { ico: '🛣️', n: '교통', tools: ['road', 'avenue', 'bus', 'subway'] },
+  { ico: '⛰️', n: '지형', tools: ['raise', 'lower', 'level'] },
+  { ico: '🛣️', n: '교통', tools: ['road', 'avenue', 'hwy', 'rail', 'station', 'bus', 'subway'] },
   { ico: '🏘️', n: '구역', tools: ['R1', 'R2', 'R3', 'C1', 'C2', 'C3', 'I1', 'I2', 'I3', 'dezone'] },
   { ico: '⚡', n: '전력', tools: ['powerline', 'coal', 'gas', 'nuke', 'wind', 'solar', 'fusion'] },
-  { ico: '💧', n: '수도', tools: ['pump', 'tower', 'bigwater'] },
-  { ico: '🏛️', n: '공공', tools: ['police', 'fire', 'hospital', 'school', 'univ', 'library'] },
-  { ico: '🌳', n: '여가', tools: ['park', 'bigpark', 'plaza'] },
+  { ico: '💧', n: '수도', tools: ['pump', 'tower', 'bigwater', 'wtreat'] },
+  { ico: '🏛️', n: '공공', tools: ['police', 'fire', 'jail', 'hospital', 'school', 'highschool', 'univ', 'library', 'museum'] },
+  { ico: '🌳', n: '여가', tools: ['park', 'bigpark', 'plaza', 'zoo', 'marina'] },
   { ico: '🗑️', n: '쓰레기', tools: ['landfill', 'incin', 'recycle', 'bigwaste'] },
-  { ico: '⭐', n: '특수', tools: ['arcology', 'port', 'airport', 'mansion', 'cityhall', 'statue', 'stadium', 'landmark'] },
-  { ico: '🌪️', n: '재해', tools: ['d_fire', 'd_quake', 'd_tornado'] },
+  { ico: '⭐', n: '특수', tools: ['arcology', 'port', 'airport', 'mansion', 'cityhall', 'statue', 'stadium', 'landmark', 'toxic', 'maxprison', 'missile', 'resort'] },
+  { ico: '🌪️', n: '재해', tools: ['d_fire', 'd_quake', 'd_tornado', 'd_flood', 'd_meteor', 'd_riot'] },
 ];
 
 const DEPTS = { trans: '교통(도로)', police: '경찰', fire: '소방', health: '보건', edu: '교육', rec: '공원·여가' };
@@ -114,6 +150,7 @@ const ORDS = {
 };
 const OVERLAYS = [
   ['none', '기본'], ['lv', '지가'], ['pol', '오염'], ['crime', '범죄'], ['traffic', '교통'],
+  ['wpol', '수질'], ['height', '지형 높이'], ['commute', '통근'],
   ['power', '전력'], ['water', '수도'], ['police', '치안 범위'], ['fire', '소방 범위'], ['health', '의료 범위'], ['edu', '교육 범위'],
 ];
 
@@ -121,7 +158,7 @@ const OVERLAYS = [
 let S = null;    // 저장되는 게임 상태
 let T = null;    // 타일 배열 (S.tiles)
 const M = {};      // 매달 다시 계산하는 지도
-const MAPKEYS = ['down', 'lv', 'pol', 'crime', 'traffic', 'cong', 'noise', 'police', 'fire', 'health', 'edu', 'park', 'bus', 'metro', 'bonus', 'waterProx', 'trees'];
+const MAPKEYS = ['wpol', 'commute', 'down', 'lv', 'pol', 'crime', 'traffic', 'cong', 'noise', 'police', 'fire', 'health', 'edu', 'park', 'bus', 'metro', 'bonus', 'waterProx', 'trees'];
 function setSize(w) { W = H = w; N = W * H; for (const k of MAPKEYS) M[k] = new Float32Array(N); M.roadDist = new Uint8Array(N); }
 setSize(64);
 const RT = { pop: 0, cJobs: 0, iJobs: 0, unemp: 0, powerCap: 0, powerUse: 0, waterCap: 0, waterUse: 0, garbage: 0, garbageDone: 0, avgCong: 0, avgPol: 0, avgCrime: 0, budget: null };
@@ -129,11 +166,11 @@ let tornado = null;
 let speed = 2;
 const SPEED_DAYS = [0, 3, 8, 24];
 
-function newTile() { return { ter: 0, tree: 0, k: '', z: '', d: 0, lvl: 0, occ: 0, hi: 0, ab: 0, b: '', o: -1, pl: 0, burn: 0, rub: 0, v: (rnd() * 4) | 0, age: 0, np: 0, pw: 0, wt: 0 }; }
+function newTile() { return { ter: 0, tree: 0, k: '', z: '', d: 0, lvl: 0, occ: 0, hi: 0, ab: 0, b: '', o: -1, pl: 0, burn: 0, rub: 0, v: (rnd() * 4) | 0, age: 0, np: 0, pw: 0, wt: 0, h: 1, sec: '', rl: 0 }; }
 
 /* ---------------- 지형 생성 ---------------- */
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-function genMap(seed, waterAmt, treeAmt) {
+function genMap(seed, waterAmt, treeAmt, hillAmt) {
   const r = mulberry32(seed);
   const tiles = []; for (let i = 0; i < N; i++) { const t = newTile(); t.v = (r() * 4) | 0; tiles.push(t); }
   // 값 노이즈
@@ -171,6 +208,20 @@ function genMap(seed, waterAmt, treeAmt) {
   for (let i = 0; i < N; i++) if (tiles[i].ter === 0 && (tn[i] > tthr || r() < 0.02 * treeAmt)) tiles[i].tree = 1;
   // 중앙부는 비워 둔다
   for (let y = (H >> 1) - 6; y < (H >> 1) + 6; y++) for (let x = (W >> 1) - 6; x < (W >> 1) + 6; x++) { const t = tiles[idx(x, y)]; if (t.ter === 1 && waterAmt < 3) t.ter = 0; }
+  // 높낮이: 물에서 멀수록, 언덕 노이즈가 클수록 높다
+  const hn = noise(16), hn2 = noise(6), amp = [0, 3, 5, 7][hillAmt === undefined ? 1 : hillAmt];
+  const dist = new Float32Array(N).fill(99); const q = [];
+  for (let i = 0; i < N; i++) if (tiles[i].ter === 1) { dist[i] = 0; q.push(i); }
+  for (let hd = 0; hd < q.length; hd++) { const i = q[hd], x = i % W, y = (i / W) | 0; for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) { if (!inb(nx, ny)) continue; const j = idx(nx, ny); if (dist[j] > dist[i] + 1) { dist[j] = dist[i] + 1; q.push(j); } } }
+  for (let i = 0; i < N; i++) {
+    const t = tiles[i]; if (t.ter === 1) { t.h = 0; continue; }
+    const e = clamp((hn[i] * 0.8 + hn2[i] * 0.2 - 0.35) / 0.55, 0, 1);
+    const shore = clamp(dist[i] / 4, 0, 1);
+    t.h = 1 + Math.round(e * amp * shore);
+  }
+  // 중앙 시작 지역은 평평하게
+  const ch0 = tiles[idx(W >> 1, H >> 1)].h || 1;
+  for (let y = (H >> 1) - 5; y < (H >> 1) + 5; y++) for (let x = (W >> 1) - 5; x < (W >> 1) + 5; x++) { const t = tiles[idx(x, y)]; if (t.ter === 0) t.h = ch0; }
   return tiles;
 }
 function calcWaterProx() {
@@ -187,8 +238,10 @@ function calcWaterProx() {
 function newGame(opts) {
   setSize(opts.size || 128);
   S = {
-    ver: 2, W, unlocked: {}, name: opts.name || '새 도시', seed: opts.seed, year: 2000, month: 0, day: 0,
-    money: opts.money, tiles: genMap(opts.seed, opts.water, opts.trees),
+    ver: 3, W, unlocked: {}, name: opts.name || '새 도시', seed: opts.seed, year: 2000, month: 3, day: 0,
+    money: opts.money, tiles: genMap(opts.seed, opts.water, opts.trees, opts.hills),
+    nb: NB_NAMES.map((n, k) => ({ name: n, side: k, pop: Math.round(20000 + rnd() * 180000) })), deals: [], inmates: 0,
+    secTax: Object.fromEntries(SECKEYS.map(k => [k, 0])), biz: {}, bizCd: {}, petCd: {}, offer: null,
     tax: { R: 9, C: 9, I: 9 }, fund: { trans: 100, police: 100, fire: 100, health: 100, edu: 100, rec: 100 },
     ord: {}, loans: [], demand: { R: 0.6, C: 0.2, I: 0.6 }, eq: 40, life: 65, approval: 70,
     garbageStock: 0, fills: {}, rewards: {}, hist: [], disasters: opts.disasters !== false,
@@ -209,7 +262,9 @@ function newGame(opts) {
 /* ---------------- 유틸 ---------------- */
 function footprint(i) { const t = T[i]; if (t.k !== 'bld') return [i]; const o = t.o, ox = o % W, oy = (o / W) | 0, sz = BLD[T[o].b].sz, out = []; for (let y = 0; y < sz; y++) for (let x = 0; x < sz; x++) out.push(idx(ox + x, oy + y)); return out; }
 function eachBld(fn) { for (let i = 0; i < N; i++) { const t = T[i]; if (t.k === 'bld' && t.o === i) fn(i, t, BLD[t.b]); } }
-function isRoad(t) { return t.k === 'road' || t.k === 'avenue'; }
+function isRoad(t) { return t.k === 'road' || t.k === 'avenue' || t.k === 'hwy'; }
+function isStreet(t) { return t.k === 'road' || t.k === 'avenue'; }
+function isRail(t) { return t.k === 'rail' || (isStreet(t) && t.rl); }
 function conducts(t) { return t.k === 'zone' || t.k === 'power' || t.k === 'bld' || (isRoad(t) && t.pl); }
 function powerLineAt(t) { return t.k === 'power' || (isRoad(t) && t.pl); }
 function news(text, kind) {
@@ -244,7 +299,7 @@ function blur(arr, iter, keep) {
 /* ---------------- 시뮬레이션 ---------------- */
 function computeRoadDist() {
   const d = M.roadDist; d.fill(255); const q = [];
-  for (let i = 0; i < N; i++) if (isRoad(T[i])) { d[i] = 0; q.push(i); }
+  for (let i = 0; i < N; i++) if (isStreet(T[i])) { d[i] = 0; q.push(i); }
   let h = 0;
   while (h < q.length) {
     const i = q[h++], x = i % W, y = (i / W) | 0; if (d[i] >= 4) continue;
@@ -253,15 +308,16 @@ function computeRoadDist() {
     }
   }
 }
+const SEASON_POWER = [1.1, 1.1, 1, 1, 1, 1, 1.06, 1.06, 1, 1, 1, 1.1];
 function powerUse(t, i) {
-  if (t.k === 'zone') return t.lvl > 0 && !t.ab ? (1 + t.lvl) * (S.ord.energy ? 0.85 : 1) : 0;
+  if (t.k === 'zone') return t.lvl > 0 && !t.ab ? (1 + t.lvl) * (S.ord.energy ? 0.85 : 1) * SEASON_POWER[S.month] : 0;
   if (t.k === 'bld' && t.o === i) return BLD[t.b].use || 0;
   return 0;
 }
 function plantMW(t) {
   const b = BLD[t.b]; if (!b.mw) return 0;
   const age = S.year - t.age; let f = 1; if (b.life && age > b.life - 5) f = 0.75;
-  if (b.wind) f *= 0.7 + 0.3 * Math.sin(S.totalMonths * 0.7 + t.v);
+  if (b.wind) f *= (0.7 + 0.3 * Math.sin(S.totalMonths * 0.7 + t.v)) * (1 + 0.1 * (t.h - 1));
   return b.mw * f;
 }
 function computePower() {
@@ -269,19 +325,33 @@ function computePower() {
   const comp = new Int32Array(N).fill(-1);
   let cap = 0, use = 0, cid = 0, short = 0, isolated = 0;
   const plants = []; eachBld((i, t, b) => { if (b.mw) plants.push(i); });
+  // 이웃 도시 전력 거래: 경계의 송전선 타일이 가상 발전소/소비처가 된다
+  const vsrc = new Map(), vsink = new Map(); RT.dealOk = RT.dealOk || {};
+  for (const d of S.deals || []) {
+    if (d.type !== 'pBuy' && d.type !== 'pSell') continue;
+    const tile = RT.conn ? RT.conn[d.side].powerTile : -1;
+    RT.dealOk[d.id] = false;
+    if (tile < 0) continue;
+    const m = d.type === 'pBuy' ? vsrc : vsink; m.set(tile, (m.get(tile) || 0) + d.amt);
+    if (d.type === 'pBuy') RT.dealOk[d.id] = true;
+  }
+  for (const k of vsrc.keys()) plants.push(k);
   for (const p of plants) {
     if (comp[p] >= 0) continue;
     const q = []; for (const j of footprint(p)) { comp[j] = cid; q.push(j); }
-    let h = 0, capacity = 0; const order = [];
+    let h = 0, capacity = 0; const order = [], sinks = [];
     while (h < q.length) {
       const i = q[h++], t = T[i]; order.push(i);
       if (t.k === 'bld' && t.o === i && BLD[t.b].mw) capacity += plantMW(t);
+      if (vsrc.has(i)) capacity += vsrc.get(i);
+      if (vsink.has(i)) { capacity -= vsink.get(i); sinks.push(i); }
       const x = i % W, y = (i / W) | 0;
       for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
         if (!inb(nx, ny)) continue; const j = idx(nx, ny);
         if (comp[j] < 0 && conducts(T[j]) && !T[j].burn) { comp[j] = cid; q.push(j); }
       }
     }
+    if (sinks.length) { const ok = capacity >= 0; for (const d of S.deals) if (d.type === 'pSell' && sinks.includes(RT.conn[d.side].powerTile)) RT.dealOk[d.id] = ok; capacity = Math.max(0, capacity); }
     let consumers = 0; for (const i of order) if (!(T[i].k === 'bld' && BLD[T[T[i].o].b].mw)) consumers++;
     if (!consumers) { isolated++; cid++; continue; }
     cap += capacity; let remain = capacity;
@@ -301,26 +371,39 @@ function computePower() {
 function computeWater() {
   for (let i = 0; i < N; i++) T[i].wt = 0;
   const comp = new Int32Array(N).fill(-1); const caps = [];
-  let total = 0, used = 0;
+  let total = 0, used = 0, qs = 0, qw = 0;
+  const label = start => {
+    if (comp[start] >= 0) return comp[start];
+    const c = caps.length; caps.push(0); const q = [start]; comp[start] = c;
+    for (let h = 0; h < q.length; h++) { const k = q[h], x = k % W, y = (k / W) | 0; for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) { if (!inb(nx, ny)) continue; const j = idx(nx, ny); if (comp[j] < 0 && isRoad(T[j])) { comp[j] = c; q.push(j); } } }
+    return c;
+  };
   eachBld((i, t, b) => {
     if (!b.wcap || !t.pw) return;
     let cap = b.wcap;
     if (b.wcapW) { const fp = footprint(i); let nearW = false; for (const j of fp) { const x = j % W, y = (j / W) | 0; for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) if (inb(nx, ny) && T[idx(nx, ny)].ter === 1 && !isRoad(T[idx(nx, ny)])) nearW = true; } if (nearW) cap = b.wcapW; }
+    // 수질 오염이 심한 곳의 물은 덜 쓸 수 있다
+    const wp = M.wpol[i]; cap *= clamp(1 - wp / 140, 0.3, 1);
+    qs += (100 - Math.min(100, wp)) * cap; qw += cap;
     total += cap;
-    // 인접 도로 찾기
     const x0 = i % W, y0 = (i / W) | 0, sz = b.sz; let start = -1;
     for (let y = y0 - 1; y <= y0 + sz && start < 0; y++) for (let x = x0 - 1; x <= x0 + sz; x++) { if (inb(x, y) && isRoad(T[idx(x, y)])) { start = idx(x, y); break; } }
     if (start < 0) return;
-    let c = comp[start];
-    if (c < 0) {
-      c = caps.length; caps.push(0); const q = [start]; comp[start] = c; let h = 0;
-      while (h < q.length) {
-        const k = q[h++], x = k % W, y = (k / W) | 0;
-        for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) { if (!inb(nx, ny)) continue; const j = idx(nx, ny); if (comp[j] < 0 && isRoad(T[j])) { comp[j] = c; q.push(j); } }
-      }
-    }
-    caps[c] += cap;
+    caps[label(start)] += cap;
   });
+  // 이웃 도시 물 거래 (경계 도로 = 상수도관)
+  RT.dealOk = RT.dealOk || {};
+  const sells = [];
+  for (const d of S.deals || []) {
+    if (d.type !== 'wBuy' && d.type !== 'wSell') continue;
+    const tile = RT.conn ? RT.conn[d.side].roadTile : -1;
+    RT.dealOk[d.id] = tile >= 0;
+    if (tile < 0) continue;
+    const c = label(tile);
+    if (d.type === 'wBuy') { caps[c] += d.amt; total += d.amt; qs += 90 * d.amt; qw += d.amt; }
+    else { caps[c] -= d.amt; sells.push([d, c]); }
+  }
+  for (const [d, c] of sells) if (caps[c] < 0) { RT.dealOk[d.id] = false; caps[c] = 0; }
   // 소비자 배분
   for (let i = 0; i < N; i++) {
     const t = T[i];
@@ -335,7 +418,27 @@ function computeWater() {
     }
   }
   eachBld((i, t) => { const w = t.wt || BLD[t.b].wcap; for (const j of footprint(i)) T[j].wt = w ? 1 : 0; });
-  RT.waterCap = total; RT.waterUse = used;
+  RT.waterCap = total; RT.waterUse = used; RT.waterQ = qw ? qs / qw : 100;
+}
+function computeRail() {
+  const comp = new Int32Array(N).fill(-1); const info = [];
+  for (let i = 0; i < N; i++) {
+    if (comp[i] >= 0 || !isRail(T[i])) continue;
+    const c = info.length, q = [i]; comp[i] = c; let edge = false;
+    for (let h = 0; h < q.length; h++) {
+      const k = q[h], x = k % W, y = (k / W) | 0; if (x === 0 || y === 0 || x === W - 1 || y === H - 1) edge = true;
+      for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) { if (!inb(nx, ny)) continue; const j = idx(nx, ny); if (comp[j] < 0 && isRail(T[j])) { comp[j] = c; q.push(j); } }
+    }
+    info.push({ edge, st: 0 });
+  }
+  const st = [];
+  eachBld((i, t, b) => {
+    if (!b.railR) return; const cs = new Set(); const x0 = i % W, y0 = (i / W) | 0;
+    for (let y = y0 - 1; y <= y0 + b.sz; y++) for (let x = x0 - 1; x <= x0 + b.sz; x++) if (inb(x, y) && comp[idx(x, y)] >= 0) cs.add(comp[idx(x, y)]);
+    st.push([i, cs]); for (const c of cs) info[c].st++;
+  });
+  RT.stations = 0; RT.stationsLinked = 0;
+  for (const [i, cs] of st) { let ok = false; for (const c of cs) if (info[c].st >= 2 || info[c].edge) ok = true; T[i].rc = ok ? 1 : 0; RT.stations++; if (ok) RT.stationsLinked++; }
 }
 function computeCoverage() {
   for (const k of ['police', 'fire', 'health', 'edu', 'park', 'bus', 'metro', 'bonus']) M[k].fill(0);
@@ -344,6 +447,7 @@ function computeCoverage() {
     if (b.park) stamp(M.park, cx, cy, b.pr, b.park, 'add');
     if (b.bus) stamp(M.bus, cx, cy, b.bus, 100, 'max');
     if (b.metro && t.pw) stamp(M.metro, cx, cy, b.metro, 100, 'max');
+    if (b.railR && t.pw && t.rc) stamp(M.metro, cx, cy, b.railR, 75, 'max');
     if (b.lvb) stamp(M.bonus, cx, cy, b.lr, b.lvb, 'add');
     if (!b.r || !t.pw) return;
     const eff = Math.min(S.fund[b.dept] / 100, 1.25);
@@ -356,6 +460,32 @@ function computeCoverage() {
 function computeTraffic() {
   M.traffic.fill(0);
   const carF = S.ord.carpool ? 0.9 : 1;
+  // 도로망 구성 요소: 같은 도로망 안에서만 출퇴근할 수 있다
+  const rc = new Int32Array(N).fill(-1), cRes = [], cJob = [], cEdge = [];
+  for (let i = 0; i < N; i++) {
+    if (rc[i] >= 0 || !isRoad(T[i])) continue;
+    const c = cRes.length, q = [i]; rc[i] = c; let edge = false;
+    for (let h = 0; h < q.length; h++) { const k = q[h], x = k % W, y = (k / W) | 0; if (x === 0 || y === 0 || x === W - 1 || y === H - 1) edge = true; for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) { if (!inb(nx, ny)) continue; const j = idx(nx, ny); if (rc[j] < 0 && isRoad(T[j])) { rc[j] = c; q.push(j); } } }
+    cRes.push(0); cJob.push(0); cEdge.push(edge);
+  }
+  const zc = new Int32Array(N).fill(-1);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = idx(x, y), t = T[i];
+    if (t.k !== 'zone' && !(t.k === 'bld' && t.o === i)) continue;
+    let near = -1;
+    for (let r = 1; r <= 3 && near < 0; r++) for (let oy = -r; oy <= r && near < 0; oy++) for (let ox = -r; ox <= r; ox++) { const nx = x + ox, ny = y + oy; if (inb(nx, ny) && isRoad(T[idx(nx, ny)])) { near = rc[idx(nx, ny)]; break; } }
+    if (near < 0) continue; zc[i] = near;
+    if (t.k === 'zone' && !t.ab) { if (t.z === 'R') cRes[near] += t.occ; else cJob[near] += t.occ; }
+    else if (t.k === 'bld' && BLD[t.b].arc) cRes[near] += t.occ;
+  }
+  RT.roadComp = rc; RT.compPop = cRes.map((r, k) => r + cJob[k]);
+  const ext = RT.extJobs || 0;
+  M.commute.fill(1);
+  for (let i = 0; i < N; i++) {
+    const t = T[i]; if (t.k !== 'zone') continue; const c = zc[i]; if (c < 0) { M.commute[i] = 0; continue; }
+    const e = cEdge[c] ? ext : 0;
+    M.commute[i] = t.z === 'R' ? clamp((cJob[c] + e + 60) / (cRes[c] * 0.45 + 60), 0, 1) : clamp((cRes[c] * 0.45 + e + 60) / (cJob[c] + 60), 0, 1);
+  }
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = idx(x, y), t = T[i];
     let trips = 0;
@@ -371,7 +501,7 @@ function computeTraffic() {
   const capF = clamp(S.fund.trans / 100, 0.3, 1.1);
   let sum = 0, cnt = 0;
   M.cong.fill(0);
-  for (let i = 0; i < N; i++) { const t = T[i]; if (!isRoad(t)) continue; const cap = (t.k === 'avenue' ? 140 : 40) * capF; M.cong[i] = M.traffic[i] / cap; sum += Math.min(M.cong[i], 2); cnt++; }
+  for (let i = 0; i < N; i++) { const t = T[i]; if (!isRoad(t)) continue; const cap = (t.k === 'hwy' ? 450 : t.k === 'avenue' ? 140 : 40) * capF; M.cong[i] = M.traffic[i] / cap; sum += Math.min(M.cong[i], 2); cnt++; }
   RT.avgCong = cnt ? sum / cnt : 0;
   M.noise.fill(0);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -379,12 +509,50 @@ function computeTraffic() {
     M.noise[idx(x, y)] = Math.min(m, 2);
   }
 }
+function computeConnections() {
+  RT.conn = [0, 1, 2, 3].map(() => ({ road: 0, hwy: 0, rail: 0, power: 0, roadTile: -1, powerTile: -1 }));
+  const side = (x, y) => y === 0 ? 0 : x === W - 1 ? 1 : y === H - 1 ? 2 : x === 0 ? 3 : -1;
+  const live = i => { const c = RT.roadComp ? RT.roadComp[i] : -1; return c >= 0 && RT.compPop[c] > 0; };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const sd = side(x, y); if (sd < 0) continue; const i = idx(x, y), t = T[i], c = RT.conn[sd];
+    if (isStreet(t) && live(i)) { c.road = 1; c.roadTile = i; }
+    if (t.k === 'hwy' && live(i)) { c.hwy = 1; c.roadTile = i; }
+    if (isRail(t)) c.rail = 1;
+    if (powerLineAt(t)) { c.power = 1; c.powerTile = i; }
+  }
+  let ext = 0;
+  for (const nb of S.nb) { const c = RT.conn[nb.side]; ext += nb.pop * 0.004 * ((c.road ? 1 : 0) + (c.hwy ? 2 : 0) + (c.rail ? 1.2 : 0)); }
+  RT.extJobs = Math.min(ext, RT.pop * 0.6 + 3000);
+  RT.railFreight = RT.conn.some(c => c.rail);
+}
+function neighborsGrow() {
+  for (const nb of S.nb) {
+    const c = RT.conn[nb.side]; let g = 1.0012 + (c.road || c.hwy || c.rail ? 0.0008 : 0);
+    if (RT.pop > nb.pop * 2) g += 0.002;
+    nb.pop = Math.round(nb.pop * g);
+  }
+}
+function computeWaterPol() {
+  const w = M.wpol; w.fill(0);
+  const iF = S.ord.antipol ? 0.7 : 1;
+  for (let i = 0; i < N; i++) {
+    const t = T[i];
+    if (t.k === 'zone' && t.z === 'I' && t.lvl > 0 && !t.ab) w[i] += Math.sqrt(t.occ) * secOf(t).wp * iF;
+    else if (t.k === 'bld') { const b = BLD[T[t.o].b]; if (b.wp) w[i] += b.wp; else if (b.fill) w[i] += 25; else if (b.needWater) w[i] += 10; }
+  }
+  let treat = 0; eachBld((i, t, b) => { if (b.treat && t.pw) treat += b.treat; });
+  RT.treat = treat;
+  const un = RT.pop > 800 ? clamp(1 - treat / RT.pop, 0, 1) : 0; RT.untreated = un;
+  for (let i = 0; i < N; i++) if (T[i].ter === 1) w[i] += un * 45;
+  blur(w, 6, 0.45);
+  for (let i = 0; i < N; i++) w[i] = clamp(w[i], 0, 100);
+}
 function computePollution() {
   const p = M.pol; p.fill(0);
   const iF = S.ord.antipol ? 0.6 : 1;
   for (let i = 0; i < N; i++) {
     const t = T[i];
-    if (t.k === 'zone' && t.z === 'I' && t.lvl > 0 && !t.ab) p[i] += Math.sqrt(t.occ) * (t.hi ? 1 : 4.5) * iF;
+    if (t.k === 'zone' && t.z === 'I' && t.lvl > 0 && !t.ab) p[i] += Math.sqrt(t.occ) * secOf(t).pol * iF;
     else if (t.k === 'bld') { const b = BLD[T[t.o].b]; if (b.pol) p[i] += b.pol; }
     if (isRoad(t)) p[i] += Math.min(M.cong[i], 2) * 18;
     if (t.tree) p[i] -= 10;
@@ -405,10 +573,12 @@ function computeCrime() {
       c[i] = 12 + Math.sqrt(t.occ) * 1.3 + RT.unemp * 90 + extra - M.lv[i] * 0.08 + (t.ab ? 30 : 0);
     } else if (t.k === 'zone') c[i] = 5;
   }
+  eachBld((i, t, b) => { if (b.crimeb) { const [cx, cy] = bldCenter(i); stamp(c, cx, cy, 8, b.crimeb, 'add'); } });
   blur(c, 1, 0.6);
-  let s = 0, n = 0;
-  for (let i = 0; i < N; i++) { c[i] = clamp(c[i] - M.police[i] * 0.75, 0, 100); if (T[i].k === 'zone' && T[i].lvl) { s += c[i]; n++; } }
-  RT.avgCrime = n ? s / n : 0;
+  const jo = RT.jailOver || 0, pf = 0.75 * (1 - 0.5 * jo);
+  let s = 0, n = 0, ps = 0;
+  for (let i = 0; i < N; i++) { c[i] = clamp(c[i] + jo * 10 - M.police[i] * pf, 0, 100); if (T[i].k === 'zone' && T[i].lvl) { s += c[i]; ps += M.police[i]; n++; } }
+  RT.avgCrime = n ? s / n : 0; RT.avgPolice = n ? ps / n : 0;
 }
 function computeLandValue() {
   // 나무 밀도
@@ -424,16 +594,17 @@ function computeLandValue() {
   for (let i = 0; i < N; i++) {
     const v = 60 + M.waterProx[i] * 40 + Math.min(M.trees[i], 8) * 3 + M.park[i] * 0.8 + M.bonus[i]
       + (M.police[i] + M.health[i]) * 0.1 + Math.min(M.edu[i], 100) * 0.12 + beauty + Math.min(50, Math.sqrt(dn[i]) * 4)
-      - M.pol[i] * 0.6 - M.crime[i] * 0.35 - M.noise[i] * 8;
+      - M.pol[i] * 0.6 - M.crime[i] * 0.35 - M.noise[i] * 8 + (T[i].ter ? 0 : (T[i].h - 1) * 4) - M.wpol[i] * 0.2;
     M.lv[i] = M.lv[i] * 0.5 + clamp(v, 0, 250) * 0.5;
   }
 }
 function computeTotals() {
-  let pop = 0, cj = 0, ij = 0;
+  let pop = 0, cj = 0, ij = 0; const sj = {}; for (const k of SECKEYS) sj[k] = 0;
   for (let i = 0; i < N; i++) {
     const t = T[i]; if (t.k !== 'zone' || t.ab) continue;
-    if (t.z === 'R') pop += t.occ; else if (t.z === 'C') cj += t.occ; else ij += t.occ;
+    if (t.z === 'R') pop += t.occ; else if (t.z === 'C') cj += t.occ; else { ij += t.occ; sj[t.sec || 'textile'] += t.occ; }
   }
+  RT.secJobs = sj;
   eachBld((i, t, b) => { if (b.arc) pop += t.occ; });
   RT.pop = pop; RT.cJobs = cj; RT.iJobs = ij;
   const wf = pop * 0.45; RT.unemp = wf > 50 ? clamp((wf - cj - ij) / wf, 0, 1) : 0;
@@ -442,11 +613,14 @@ function hasBld(key) { let f = false; eachBld((i, t) => { if (t.b === key && t.p
 function computeDemand() {
   const pop = RT.pop, cj = RT.cJobs, ij = RT.iJobs, wf = pop * 0.45, jobs = cj + ij;
   const port = hasBld('port'), air = hasBld('airport'), stad = hasBld('stadium');
-  let rD = (jobs - wf + 60 + pop * 0.04) / Math.max(80, wf);
+  RT.hasPort = port; RT.hasAir = air;
+  let cb = 0; eachBld((i, t, b) => { if (b.cboost && t.pw !== 0) cb += b.cboost; });
+  const ext = RT.extJobs || 0;
+  let rD = (jobs - wf + 60 + pop * 0.04 + ext * 0.5) / Math.max(80, wf);
   rD += -(S.tax.R - 9) * 0.06 + (S.eq - 50) / 600 + (S.life - 65) / 500 - Math.min(S.garbageStock / 20000, 0.3) - RT.avgPol / 400 - RT.avgCrime / 400;
-  const cT = pop * 0.22 * (S.ord.tourism ? 1.15 : 1) * (air ? 1.2 : 1) * (stad ? 1.1 : 1) + 10;
+  const cT = pop * 0.22 * (S.ord.tourism ? 1.15 : 1) * (air ? 1.2 : 1) * (stad ? 1.1 : 1) * (1 + Math.min(cb, 0.3)) + 10 + ext * 0.3;
   let cD = (cT - cj) / Math.max(40, cT) - (S.tax.C - 9) * 0.06 - RT.avgCong * 0.1;
-  const iT = pop * 0.28 * (port ? 1.25 : 1) + 50 + (port ? 80 : 0);
+  const iT = pop * 0.28 * (port ? 1.25 : 1) * (RT.railFreight ? 1.1 : 1) + 50 + (port ? 80 : 0) + ext * 0.4;
   let iD = (iT - ij) / Math.max(50, iT) - (S.tax.I - 9) * 0.06 - (S.ord.antipol ? 0.1 : 0);
   if (RT.powerShort > 20) { rD -= 0.1; cD -= 0.1; iD -= 0.15; }
   S.demand.R = S.demand.R * 0.6 + clamp(rD, -1, 1) * 0.4;
@@ -455,9 +629,10 @@ function computeDemand() {
 }
 function desirability(i, t) {
   const lv = M.lv[i], pol = M.pol[i], cr = M.crime[i], noise = M.noise[i];
-  if (t.z === 'R') return (lv - 80) / 140 - pol / 110 - cr / 140 - noise * 0.12 + M.health[i] * 0.0015 + Math.min(M.edu[i], 100) * 0.0015 + M.park[i] * 0.004 - (S.tax.R - 9) * 0.03;
-  if (t.z === 'C') return (lv - 60) / 150 - cr / 150 + Math.min(M.noise[i], 1) * 0.12 - Math.max(0, M.noise[i] - 1.3) * 0.2 + M.park[i] * 0.002 - (S.tax.C - 9) * 0.03;
-  return 0.15 - (S.tax.I - 9) * 0.03 - cr / 300 + (M.waterProx[i] > 0 ? 0.05 : 0);
+  const cm = (M.commute[i] - 1) * (t.z === 'R' ? 0.6 : 0.5);
+  if (t.z === 'R') return cm + (lv - 80) / 140 - pol / 110 - cr / 140 - noise * 0.12 + M.health[i] * 0.0015 + Math.min(M.edu[i], 100) * 0.0015 + M.park[i] * 0.004 - (S.tax.R - 9) * 0.03;
+  if (t.z === 'C') return cm + (lv - 60) / 150 - cr / 150 + Math.min(M.noise[i], 1) * 0.12 - Math.max(0, M.noise[i] - 1.3) * 0.2 + M.park[i] * 0.002 - (S.tax.C - 9) * 0.03;
+  return cm + 0.15 - (S.tax.I - 9) * 0.03 - cr / 300 + (M.waterProx[i] > 0 ? 0.05 : 0);
 }
 function growZones() {
   for (let i = 0; i < N; i++) {
@@ -468,25 +643,38 @@ function growZones() {
     if (t.lvl > 0 && (t.np >= 4 || !road)) { if (!t.ab && rnd() < 0.3) { t.ab = 1; t.occ = 0; } continue; }
     if (!road || !t.pw) continue;
     const D = S.demand[t.z], s = desirability(i, t), g = D * 0.65 + s * 0.35;
-    if (t.ab) { if (g > -0.15 && rnd() < 0.12) { t.ab = 0; t.lvl = Math.max(1, t.lvl - 1); t.occ = OCC[t.z][t.lvl]; } continue; }
+    if (t.ab) { if (g > -0.15 && rnd() < 0.12) { t.ab = 0; t.lvl = Math.max(1, t.lvl - 1); t.occ = occFor(t); } continue; }
     let cap = MAXLV[t.d]; if (!t.wt) cap = Math.min(cap, 2);
+    if (t.z === 'I' && t.sec && SECT[t.sec].max) cap = Math.min(cap, SECT[t.sec].max);
     if (g > 0 && t.lvl < cap && rnd() < g * 0.3) {
       const nl = t.lvl + 1;
+      if (t.z === 'I' && (t.lvl === 0 || !t.sec || rnd() < 0.12)) { t.sec = pickSector(t, i); t.hi = secOf(t).hi; }
       let ok = true;
+      if (t.z === 'I' && secOf(t).max && nl > secOf(t).max) ok = false;
       if (t.z !== 'I' && M.lv[i] < LVGATE[nl]) ok = false;
       if (t.z === 'I' && IEQ[nl] && S.eq < IEQ[nl]) ok = false;
       if (t.z === 'I' && nl >= 7 && !t.hi) ok = false;
       if (t.z === 'C' && CEQ[nl] && S.eq < CEQ[nl]) ok = false;
       if (ok) {
-        t.lvl = nl; t.occ = OCC[t.z][nl]; t.v = (rnd() * 4) | 0;
-        if (t.z === 'I') t.hi = rnd() < (S.eq - 55) / 70 ? 1 : 0;
+        t.lvl = nl; t.occ = occFor(t); t.v = (rnd() * 4) | 0;
       }
     } else if (g < -0.25 && t.lvl > 0 && rnd() < -g * 0.12) {
       const slum = M.crime[i] > 60 || M.pol[i] > 75 || (t.z === 'R' && M.lv[i] < 12);
       if (slum && rnd() < 0.3) { t.ab = 1; t.occ = 0; }
-      else { t.lvl--; t.occ = OCC[t.z][t.lvl]; }
-    } else if (t.lvl > 0) t.occ = OCC[t.z][t.lvl];
+      else { t.lvl--; t.occ = occFor(t); }
+    } else if (t.lvl > 0) t.occ = occFor(t);
   }
+}
+function sectorWeights() {
+  const w = {};
+  for (const k of SECKEYS) { const sc = SECT[k]; let v = Math.exp(-(((S.eq - sc.c) / 32) ** 2)) + 0.02; if (sc.port && RT.hasPort) v *= 1.6; if (sc.air && RT.hasAir) v *= 1.8; v *= Math.exp(-0.35 * (S.secTax[k] || 0)); w[k] = v; }
+  return w;
+}
+function pickSector(t, i) {
+  const w = Object.assign({}, RT.secW || sectorWeights());
+  if (t.d === 1 && M.lv[i] < 95) w.agri = (w.agri + 0.15) * 2.2; else w.agri = 0;
+  let sum = 0; for (const k in w) sum += w[k]; let r = rnd() * sum;
+  for (const k in w) { r -= w[k]; if (r <= 0) return k; } return 'textile';
 }
 function growArcologies() {
   eachBld((i, t, b) => {
@@ -506,6 +694,12 @@ function processGarbage() {
   let left = produced + S.garbageStock * 0.5;
   S.garbageStock *= 0.5;
   const burned = Math.min(left, burnCap); left -= burned;
+  RT.dealOk = RT.dealOk || {};
+  for (const d of S.deals || []) {
+    if (d.type !== 'gExp') continue; const c = RT.conn ? RT.conn[d.side] : null;
+    const ok = !!(c && (c.road || c.hwy || c.rail)); RT.dealOk[d.id] = ok;
+    if (ok) left -= Math.min(left, d.amt);
+  }
   for (const k in S.fills) {
     if (left <= 0) break;
     const take = Math.min(left, S.fills[k]); S.fills[k] -= take; left -= take;
@@ -515,11 +709,19 @@ function processGarbage() {
   RT.garbage = produced; RT.garbageDone = produced - left;
   RT.landfillLeft = Object.values(S.fills).reduce((a, b) => a + b, 0);
 }
+function processJail() {
+  let cap = 0; eachBld((i, t, b) => { if (b.jail && t.pw) cap += b.jail; }); RT.jailCap = cap;
+  const arrests = RT.pop * (RT.avgCrime / 100) * ((RT.avgPolice || 0) / 100) * 0.012;
+  S.inmates = Math.max(0, (S.inmates || 0) * 0.95 + arrests);
+  RT.jailOver = S.inmates > cap ? clamp((S.inmates - cap) / Math.max(S.inmates, 1), 0, 1) : 0;
+}
+const DEAL_T = { pSell: ['전력 판매', 'MW', 1], pBuy: ['전력 구매', 'MW', -1], wSell: ['물 판매', '', 1], wBuy: ['물 구매', '', -1], gExp: ['쓰레기 위탁', 't', -1] };
 function budgetMonth(apply) {
   const b = { inc: {}, exp: {} };
   b.inc['주거세'] = RT.pop * S.tax.R * 0.011;
   b.inc['상업세'] = RT.cJobs * S.tax.C * 0.014;
-  b.inc['공업세'] = RT.iJobs * S.tax.I * 0.014;
+  let itax = 0; for (const k of SECKEYS) itax += ((RT.secJobs || {})[k] || 0) * clamp(S.tax.I + (S.secTax[k] || 0), 0, 25) * 0.014;
+  b.inc['공업세'] = itax;
   const dexp = { trans: 0, police: 0, fire: 0, health: 0, edu: 0, rec: 0, power: 0, water: 0, waste: 0, special: 0 };
   let roads = 0; for (let i = 0; i < N; i++) { const t = T[i]; if (t.k === 'road') roads += T[i].ter ? 0.4 : 0.1; else if (t.k === 'avenue') roads += 0.25; else if (t.k === 'power') roads += 0.02; }
   dexp.trans += roads;
@@ -533,6 +735,14 @@ function budgetMonth(apply) {
   if (ordc) b.exp['조례'] = ordc;
   if (hasBld('port')) b.inc['항구 사용료'] = 40 + RT.iJobs * 0.02;
   if (hasBld('airport')) b.inc['공항 사용료'] = 60 + RT.cJobs * 0.03;
+  eachBld((i, t, d) => { if (d.biz && d.inc) b.inc['계약: ' + d.n] = d.inc[0] + RT.pop * d.inc[1]; });
+  const failed = [];
+  for (const d of S.deals || []) {
+    const [n, , sg] = DEAL_T[d.type]; const v = d.amt * d.price; const label = `${n} (${S.nb[d.side].name})`;
+    const ok = !RT.dealOk || RT.dealOk[d.id] !== false;
+    if (!ok) { if (sg > 0) failed.push(d); continue; }
+    if (sg > 0) b.inc[label] = (b.inc[label] || 0) + v; else b.exp[label] = (b.exp[label] || 0) + v;
+  }
   let loanPay = 0; for (const l of S.loans) loanPay += l.pay;
   if (loanPay) b.exp['대출 상환'] = loanPay;
   b.totalInc = Object.values(b.inc).reduce((a, c) => a + c, 0);
@@ -543,6 +753,11 @@ function budgetMonth(apply) {
     for (const l of S.loans) l.left--;
     const done = S.loans.filter(l => l.left <= 0); if (done.length) news('대출 상환이 완료되었습니다.', 'good');
     S.loans = S.loans.filter(l => l.left > 0);
+    for (const d of failed) { const fine = d.amt * d.price * 3; S.money -= fine; news(`🤝 ${S.nb[d.side].name}에 약속한 ${DEAL_T[d.type][0]}을(를) 공급하지 못해 위약금 ₩${fmt(fine)}을 냈고 계약이 해지되었습니다.`, 'bad'); }
+    S.deals = (S.deals || []).filter(d => !failed.includes(d));
+    for (const d of S.deals) d.left--;
+    for (const d of S.deals.filter(d => d.left <= 0)) news(`🤝 ${S.nb[d.side].name}와의 ${DEAL_T[d.type][0]} 계약이 만료되었습니다.`, 'info');
+    S.deals = S.deals.filter(d => d.left > 0);
   }
   RT.budget = b;
   return b;
@@ -553,11 +768,14 @@ function updateCityStats() {
   for (let i = 0; i < N; i++) { const t = T[i]; if (t.k === 'zone' && t.z === 'R' && t.occ) { es += Math.min(M.edu[i], 120) * t.occ; hs += M.health[i] * t.occ; ew += t.occ; } }
   const eT = ew ? es / ew : 0, hT = ew ? hs / ew : 0;
   S.eq += (eT * 1.1 + 15 - S.eq) * (S.ord.tutor ? 0.06 : 0.035);
-  S.life += (55 + hT * 0.25 + (S.ord.clinic ? 6 : 0) - RT.avgPol * 0.12 - S.life) * 0.05;
+  const wq = RT.pop > 500 ? 100 - (RT.waterQ === undefined ? 100 : RT.waterQ) : 0;
+  S.life += (55 + hT * 0.25 + (S.ord.clinic ? 6 : 0) - RT.avgPol * 0.12 - wq * 0.12 - S.life) * 0.05;
   const avgTax = (S.tax.R + S.tax.C + S.tax.I) / 3;
   let ap = 78 - (avgTax - 9) * 4 - RT.avgCrime * 0.35 - RT.avgPol * 0.25 - RT.unemp * 60 - Math.max(0, RT.avgCong - 0.6) * 20
     - Math.min(S.garbageStock / 300, 20) + (S.eq - 50) * 0.1 + (S.life - 65) * 0.2 + (hasBld('cityhall') ? 5 : 0);
   if (RT.powerShort > 0) ap -= Math.min(10, RT.powerShort / 5);
+  ap -= wq * 0.08 + (RT.jailOver || 0) * 10 + (riots.length ? 5 : 0);
+  eachBld((i, t, d) => { if (d.ap) ap += d.ap; });
   if (RT.pop > 200 && RT.waterUse < RT.pop * 0.005) ap -= 5;
   S.approval += (clamp(ap, 0, 100) - S.approval) * 0.15;
 }
@@ -607,28 +825,91 @@ function advise() {
   if (RT.pop > 2000 && S.eq < 40 && !hasBld('school')) { if (say('edu', '교육 고문: 학교가 없어 교육 수준이 낮습니다. 첨단 산업이 들어오지 않습니다.', 'info', 18)) return; }
   if (RT.pop > 1500 && !hasBld('hospital')) { say('health', '보건 고문: 병원을 지으면 기대수명과 주거 선호도가 올라갑니다.', 'info', 24); }
 }
+const popups = [];
+function maybeOffer() {
+  for (const k in S.bizCd) if (S.bizCd[k] > 0) S.bizCd[k]--;
+  if (RT.pop < 2500 || S.offer || rnd() > 1 / 30) return;
+  const keys = Object.keys(BLD).filter(k => BLD[k].biz && !S.biz[k] && !(S.bizCd[k] > 0));
+  if (!keys.length) return;
+  const k = keys[(rnd() * keys.length) | 0]; S.offer = k; popups.push({ type: 'offer', key: k });
+}
+const PETS = [
+  { k: 'taxR', c: () => S.tax.R > 10, t: '주거세가 너무 높습니다. 주거세를 1%p 내려 주세요.', a: () => S.tax.R-- },
+  { k: 'taxC', c: () => S.tax.C > 11, t: '상인들이 상업세를 1%p 내려 달라고 요구합니다.', a: () => S.tax.C-- },
+  { k: 'taxI', c: () => S.tax.I > 11, t: '기업들이 공업세를 1%p 내려 달라고 요구합니다.', a: () => S.tax.I-- },
+  { k: 'police', c: () => RT.avgCrime > 22 && S.fund.police < 110, t: '범죄가 걱정됩니다. 경찰 예산을 110%로 올려 주세요.', a: () => S.fund.police = 110 },
+  { k: 'watch', c: () => RT.avgCrime > 18 && !S.ord.watch, t: '동네를 지킬 주민 방범대를 운영해 주세요.', a: () => S.ord.watch = true },
+  { k: 'antipol', c: () => RT.avgPol > 25 && !S.ord.antipol, t: '공기가 너무 나쁩니다. 대기오염 방지법을 시행해 주세요.', a: () => S.ord.antipol = true },
+  { k: 'clinic', c: () => S.life < 68 && !S.ord.clinic, t: '병원비가 부담됩니다. 무료 진료소를 열어 주세요.', a: () => S.ord.clinic = true },
+  { k: 'tutor', c: () => S.eq < 70 && !S.ord.tutor && RT.pop > 3000, t: '아이들을 위한 방과후 교실을 만들어 주세요.', a: () => S.ord.tutor = true },
+  { k: 'recycle', c: () => S.garbageStock > 100 && !S.ord.recycleO, t: '쓰레기가 넘쳐납니다. 분리수거를 의무화해 주세요.', a: () => S.ord.recycleO = true },
+  { k: 'carpool', c: () => RT.avgCong > 0.6 && !S.ord.carpool, t: '출퇴근길이 너무 막힙니다. 카풀을 장려해 주세요.', a: () => S.ord.carpool = true },
+  { k: 'nocasino', c: () => S.ord.casino, t: '카지노 때문에 동네가 위험해졌습니다. 카지노를 폐지해 주세요.', a: () => S.ord.casino = false },
+  { k: 'edu', c: () => S.fund.edu < 100, t: '교육 예산을 100%로 되돌려 주세요.', a: () => S.fund.edu = 100 },
+  { k: 'health', c: () => S.fund.health < 100, t: '보건 예산을 100%로 되돌려 주세요.', a: () => S.fund.health = 100 },
+  { k: 'beauty', c: () => RT.pop > 8000 && !S.ord.beauty, t: '도시를 더 아름답게! 도시 미화 사업을 시작해 주세요.', a: () => S.ord.beauty = true },
+];
+function maybePetition() {
+  for (const k in S.petCd) if (S.petCd[k] > 0) S.petCd[k]--;
+  if (RT.pop < 800 || popups.some(p => p.type === 'pet') || rnd() > 1 / 8) return;
+  const ok = PETS.filter(p => !(S.petCd[p.k] > 0) && p.c());
+  if (!ok.length) return;
+  const p = ok[(rnd() * ok.length) | 0]; S.petCd[p.k] = 24;
+  popups.push({ type: 'pet', key: p.k, n: Math.round(50 + RT.pop * (0.01 + rnd() * 0.03)) });
+}
+let riots = [];
+function maybeRiot() {
+  if (RT.pop < 3000 || riots.length) return;
+  const summer = S.month >= 5 && S.month <= 7;
+  const p = Math.max(0, (45 - S.approval) / 45) * clamp(RT.avgCrime / 30, 0, 2) * (summer ? 1 : 0.35) * 0.25;
+  if (rnd() >= p) return;
+  let best = -1, bc = -1; for (let k = 0; k < 400; k++) { const i = (rnd() * N) | 0; if (T[i].k === 'zone' && T[i].lvl && M.crime[i] > bc) { bc = M.crime[i]; best = i; } }
+  if (best >= 0) startRiot(best % W, (best / W) | 0);
+}
+function startRiot(x, y) { riots.push({ x: x + 0.5, y: y + 0.5, life: 40 }); news('✊ 시민 폭동이 일어났습니다! 경찰이 많을수록 빨리 진압됩니다.', 'bad'); }
+function riotStep() {
+  if (!riots.length) return;
+  for (const r of riots) {
+    r.x = clamp(r.x + (rnd() - 0.5) * 1.2, 0.5, W - 0.5); r.y = clamp(r.y + (rnd() - 0.5) * 1.2, 0.5, H - 0.5);
+    const x = r.x | 0, y = r.y | 0, i = idx(x, y), t = T[i];
+    if (t.k === 'zone' && t.lvl > 0 && rnd() < 0.15) { t.lvl--; t.occ = occFor(t); if (!t.lvl) t.rub = 3; }
+    if (rnd() < 0.04) igniteAt(x, y);
+    r.life -= 1 + M.police[i] / 15;
+  }
+  riots = riots.filter(r => r.life > 0);
+  if (!riots.length) news('폭동이 진압되었습니다.', 'info');
+}
 const MILESTONES = [500, 1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 2000000, 5000000, 10000000];
 function monthly(init) {
   computeRoadDist();
+  computeRail();
   computePower();
   computeWater();
   computeCoverage();
   computeTotals();
   computeTraffic();
+  computeConnections();
   computePollution();
+  computeWaterPol();
   computeCrime();
   computeLandValue();
   if (init) { budgetMonth(false); return; }
+  RT.secW = sectorWeights();
   computeDemand();
   growZones();
   growArcologies();
   const prevPop = RT.pop;
   computeTotals();
   processGarbage();
+  processJail();
   budgetMonth(true);
   updateCityStats();
   checkRewards();
   agePlants();
+  neighborsGrow();
+  maybeOffer();
+  maybePetition();
+  maybeRiot();
   for (const m of MILESTONES) if (prevPop < m && RT.pop >= m && !(S.ms || {})[m]) { S.ms = S.ms || {}; S.ms[m] = 1; news(`🎉 인구 ${fmt(m)}명 달성! 도시가 성장하고 있습니다.`, 'good'); }
   S.hist.push({ p: RT.pop, m: Math.round(S.money), r: RT.pop, c: RT.cJobs, i: RT.iJobs, ap: Math.round(S.approval) });
   if (S.hist.length > 240) S.hist.shift();
@@ -676,7 +957,7 @@ function fireStep() {
     const t = T[i]; if (!t.burn) continue;
     const fc = M.fire[i];
     if (fc > 20 && rnd() < fc / 160) { // 진압
-      t.burn = 0; if (t.k === 'zone' && t.lvl > 1) { t.lvl--; t.occ = OCC[t.z][t.lvl]; }
+      t.burn = 0; if (t.k === 'zone' && t.lvl > 1) { t.lvl--; t.occ = occFor(t); }
       continue;
     }
     const x = i % W, y = (i / W) | 0;
@@ -714,15 +995,57 @@ function tornadoStep() {
     t.tree = 0;
   }
 }
+let flood = null, floodSet = null, meteor = null;
+function startFlood(x, y) {
+  // 클릭 지점 근처에서 물과 맞닿은 저지대를 찾는다
+  let best = -1, bd = 1e9;
+  for (let yy = y - 14; yy <= y + 14; yy++) for (let xx = x - 14; xx <= x + 14; xx++) {
+    if (!inb(xx, yy)) continue; const i = idx(xx, yy), t = T[i]; if (t.ter === 1 || t.h > 2 || M.waterProx[i] < 0.75) continue;
+    const d = Math.hypot(xx - x, yy - y); if (d < bd) { bd = d; best = i; }
+  }
+  if (best < 0) { flash('근처에 물가 저지대가 없습니다'); return false; }
+  flood = { days: 0, cells: [best], maxH: T[best].h + 1 }; floodSet = new Set([best]);
+  news('🌊 홍수가 발생했습니다! 저지대가 물에 잠기고 있습니다.', 'bad'); return true;
+}
+function floodStep() {
+  if (!flood) return;
+  flood.days++;
+  if (flood.days <= 14) {
+    const add = [];
+    for (const i of flood.cells) { const x = i % W, y = (i / W) | 0; for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) { if (!inb(nx, ny)) continue; const j = idx(nx, ny), t = T[j]; if (t.ter === 0 && t.h <= flood.maxH && !floodSet.has(j) && rnd() < 0.35) add.push(j); } }
+    for (const j of add) if (floodSet.size < 240) { floodSet.add(j); flood.cells.push(j); }
+  }
+  for (const i of floodSet) T[i].burn = 0;
+  if (flood.days >= 35) {
+    for (const i of floodSet) { const t = T[i]; if (t.k === 'zone' && t.lvl > 0 && rnd() < 0.4) { t.lvl--; t.occ = occFor(t); if (!t.lvl) t.rub = 4; } else if (t.k === 'bld' && rnd() < 0.15) destroyBld(t.o); else if (isRoad(t) && rnd() < 0.1) { t.k = 'rubble'; t.pl = 0; } }
+    news('🌊 홍수가 물러갔습니다. 피해를 복구하세요.', 'warn'); flood = null; floodSet = null; monthlyMaps();
+  }
+}
+function startMeteor(x, y) { meteor = { x, y, t0: performance.now() }; news('☄️ 운석이 떨어지고 있습니다!', 'bad'); }
+function meteorImpact() {
+  const { x, y } = meteor; meteor = null; shake = 50;
+  for (let yy = y - 3; yy <= y + 3; yy++) for (let xx = x - 3; xx <= x + 3; xx++) {
+    if (!inb(xx, yy) || Math.hypot(xx - x, yy - y) > 2.6) continue; const t = T[idx(xx, yy)];
+    if (t.k === 'zone') { t.lvl = 0; t.occ = 0; t.ab = 0; t.rub = 8; }
+    else if (t.k === 'bld') destroyBld(t.o);
+    else if (t.k) { t.k = t.ter ? '' : 'rubble'; t.pl = 0; t.rl = 0; }
+    t.tree = 0;
+  }
+  const c = T[idx(x, y)]; if (c.ter === 0 && c.h > 1) c.h--;
+  for (let k = 0; k < 6; k++) igniteAt(x + ((rnd() - 0.5) * 10 | 0), y + ((rnd() - 0.5) * 10 | 0));
+  news('☄️ 운석이 떨어져 큰 피해가 났습니다!', 'bad'); calcWaterProx(); monthlyMaps();
+}
 function randomDisaster() {
   const r = rnd();
   const land = () => { for (let k = 0; k < 200; k++) { const x = 8 + (rnd() * (W - 16) | 0), y = 8 + (rnd() * (H - 16) | 0); const t = T[idx(x, y)]; if (t.k === 'zone' && t.lvl) return [x, y]; } return [W / 2 | 0, H / 2 | 0]; };
   const [x, y] = land();
-  if (r < 0.5) { for (let k = 0; k < 3; k++) igniteAt(x + k, y); news('🔥 대형 화재가 발생했습니다!', 'bad'); }
-  else if (r < 0.75) quake(x, y);
-  else startTornado(x, y);
+  if (r < 0.4) { for (let k = 0; k < 3; k++) igniteAt(x + k, y); news('🔥 대형 화재가 발생했습니다!', 'bad'); }
+  else if (r < 0.6) quake(x, y);
+  else if (r < 0.75) startTornado(x, y);
+  else if (r < 0.93) { if (!startFlood(x, y)) startTornado(x, y); }
+  else startMeteor(x, y);
 }
-function monthlyMaps() { computeRoadDist(); computePower(); computeWater(); computeCoverage(); miniDirty = true; }
+function monthlyMaps() { computeRoadDist(); computeRail(); computePower(); computeWater(); computeCoverage(); miniDirty = true; }
 
 /* ---------------- 시간 진행 ---------------- */
 let dayAcc = 0;
@@ -734,7 +1057,7 @@ function tick(dt) {
     dayAcc -= 1; steps++;
     S.day++;
     if (S.day % 3 === 0) fireStep();
-    tornadoStep();
+    tornadoStep(); floodStep(); riotStep();
     if (S.day >= 30) {
       S.day = 0; S.month++;
       if (S.month >= 12) { S.month = 0; S.year++; }
@@ -767,6 +1090,13 @@ function canPlaceBld(key, ox, oy) {
     const t = T[idx(x, y)];
     if (t.ter === 1) return '물 위에는 지을 수 없습니다';
     if (!(t.k === '' || (t.k === 'zone' && t.lvl === 0 && !t.rub))) return '공간이 비어 있지 않습니다';
+    if (t.h !== T[idx(ox, oy)].h) return '땅이 평평하지 않습니다 (평탄화 도구 사용)';
+  }
+  if (b.biz && S.biz[key] !== 'ok') return S.biz[key] === 'built' ? '이미 건설했습니다' : '사업 제안을 수락해야 지을 수 있습니다';
+  if (b.needRail) {
+    let ok = false;
+    for (let y = oy - 1; y <= oy + b.sz; y++) for (let x = ox - 1; x <= ox + b.sz; x++) if (inb(x, y) && isRail(T[idx(x, y)])) ok = true;
+    if (!ok) return '철도 옆에 지어야 합니다';
   }
   if (b.needWater) {
     let ok = false;
@@ -782,12 +1112,45 @@ function opTile(tool, x, y, dry) {
   switch (tool) {
     case 'road': case 'avenue': {
       if (t.k === tool) return 0;
+      if (t.k === 'hwy') return -1;
+      if (t.k === 'rail') { if (t.ter === 1) return -1; if (!dry) { t.k = tool; t.rl = 1; } return tl.cost; }
       if (t.ter === 1) { if (tool !== 'road' || (t.k !== '' && t.k !== 'power')) return -1; if (!dry) { t.k = 'road'; t.pl = t.pl || 0; } return 60; }
       if (t.k === 'road' && tool === 'avenue') { if (!dry) t.k = 'avenue'; return 18; }
       if (t.k === 'avenue') return 0;
       if (t.k === 'power') { if (!dry) { t.k = tool; t.pl = 1; } return tl.cost; }
       if (t.k === '' || (t.k === 'zone' && t.lvl === 0) || t.k === 'rubble') { if (!dry) { Object.assign(t, { k: tool, z: '', d: 0, lvl: 0, occ: 0, tree: 0, rub: 0, pl: 0 }); } return tl.cost + treeC; }
       return -1;
+    }
+    case 'hwy': {
+      if (t.k === 'hwy') return 0;
+      if (t.ter === 1) { if (t.k !== '' && t.k !== 'power') return -1; if (!dry) { Object.assign(t, { k: 'hwy', pl: t.k === 'power' ? 1 : 0 }); } return 200; }
+      if (isStreet(t)) { if (t.rl) return -1; if (!dry) t.k = 'hwy'; return 70; }
+      if (t.k === 'power') { if (!dry) { t.k = 'hwy'; t.pl = 1; } return tl.cost; }
+      if (t.k === '' || (t.k === 'zone' && t.lvl === 0) || t.k === 'rubble') { if (!dry) Object.assign(t, { k: 'hwy', z: '', d: 0, lvl: 0, occ: 0, tree: 0, rub: 0, pl: 0 }); return tl.cost + treeC; }
+      return -1;
+    }
+    case 'rail': {
+      if (isRail(t)) return 0;
+      if (isStreet(t)) { if (t.ter === 1) return -1; if (!dry) t.rl = 1; return 20; }
+      if (t.ter === 1) { if (t.k !== '') return -1; if (!dry) t.k = 'rail'; return 120; }
+      if (t.k === '' || (t.k === 'zone' && t.lvl === 0) || t.k === 'rubble') { if (!dry) Object.assign(t, { k: 'rail', z: '', d: 0, lvl: 0, occ: 0, tree: 0, rub: 0, pl: 0 }); return tl.cost + treeC; }
+      return -1;
+    }
+    case 'raise': case 'lower': case 'level': {
+      const free = t.k === '' || (t.k === 'zone' && t.lvl === 0 && !t.rub);
+      if (!free) return -1;
+      let target = tool === 'raise' ? t.h + 1 : tool === 'lower' ? t.h - 1 : levelTarget;
+      if (t.ter === 1) {   // 물
+        if (target < 1) return -1;
+        if (!dry) Object.assign(t, { ter: 0, h: target });
+        return 40 + (target - 1) * 15;
+      }
+      if (target > MAXH) return -1;
+      if (target === t.h) return 0;
+      if (target < 1) { if (tool === 'level') target = 1; else { if (!dry) Object.assign(t, { ter: 1, h: 0, tree: 0, k: '', z: '', d: 0 }); return 40; } }
+      const c = Math.abs(target - t.h) * 15;
+      if (!dry) t.h = target;
+      return c;
     }
     case 'powerline': {
       if (powerLineAt(t)) return 0;
@@ -798,7 +1161,7 @@ function opTile(tool, x, y, dry) {
     case 'bulldoze': {
       if (t.k === 'bld') { const c = 10 * BLD[T[t.o].b].sz ** 2; if (!dry) { const o = t.o; for (const j of footprint(i)) { Object.assign(T[j], { k: '', b: '', o: -1, burn: 0, pl: 0 }); } delete S.fills[o]; } return c; }
       if (t.k === 'zone') { if (t.lvl === 0 && !t.rub) return -1; const c = 2 + t.lvl * 4; if (!dry) Object.assign(t, { lvl: 0, occ: 0, ab: 0, rub: 0, burn: 0 }); return c; }
-      if (t.k !== '') { if (!dry) Object.assign(t, { k: '', pl: 0, burn: 0 }); return t.ter ? 10 : 1; }
+      if (t.k !== '') { if (!dry) Object.assign(t, { k: '', pl: 0, rl: 0, burn: 0 }); return t.ter ? 10 : 1; }
       if (t.tree) { if (!dry) t.tree = 0; return 2; }
       return -1;
     }
@@ -818,8 +1181,10 @@ function opTile(tool, x, y, dry) {
   }
   return -1;
 }
-function applyTool(tool, tiles) {
+let levelTarget = 1;
+function applyTool(tool, tiles, start) {
   const tl = TOOLS[tool];
+  if (tool === 'level') { const st = start || tiles[0]; levelTarget = Math.max(1, T[idx(st[0], st[1])].h); }
   let spent = 0, fail = 0, poor = false;
   if (tl.type === 'place') {
     const [x, y] = tiles[0]; const [ox, oy] = placeOrigin(tool, x, y); const key = tl.bld, b = BLD[key];
@@ -833,12 +1198,16 @@ function applyTool(tool, tiles) {
     T[o].age = S.year;
     if (b.fill) S.fills[o] = b.fill;
     if (b.reward) { S.rewards[key] = 'built'; buildToolbar(); news(`「${b.n}」이(가) 완공되었습니다!`, 'good'); }
+    if (b.biz) { S.biz[key] = 'built'; buildToolbar(); news(`「${b.n}」이(가) 들어섰습니다. 매달 계약금이 들어옵니다.`, 'info'); }
     S.money -= cost; spent = cost;
   } else if (tl.type === 'click') {
     const [x, y] = tiles[0];
     if (tool === 'd_fire') { if (!igniteAt(x, y)) flash('불이 붙을 대상이 없습니다'); else news('🔥 화재가 발생했습니다!', 'bad'); }
     if (tool === 'd_quake') quake(x, y);
     if (tool === 'd_tornado') startTornado(x, y);
+    if (tool === 'd_flood') startFlood(x, y);
+    if (tool === 'd_meteor') startMeteor(x, y);
+    if (tool === 'd_riot') startRiot(x, y);
     return;
   } else {
     for (const [x, y] of tiles) {
@@ -848,6 +1217,7 @@ function applyTool(tool, tiles) {
       opTile(tool, x, y, false); S.money -= c; spent += c;
     }
     if (poor) flash('예산이 부족합니다');
+    if (tool === 'raise' || tool === 'lower' || tool === 'level') calcWaterProx();
   }
   if (spent > 0) { floatText('-₩' + fmt(spent)); sfx('build'); }
   monthlyMaps();
@@ -856,7 +1226,7 @@ function applyTool(tool, tiles) {
 
 /* ---------------- 렌더링 ---------------- */
 const cv = $('view'), ctx = cv.getContext('2d');
-let cw = 0, ch = 0, dpr = 1, zoom = 1, camX = 0, camY = 0, hw = 32, hh = 16;
+let cw = 0, ch = 0, dpr = 1, zoom = 1, camX = 0, camY = 0, hw = 32, hh = 16, elev = 0;
 let overlay = 'none', shake = 0, miniDirty = true;
 let hover = null, drag = null;
 let tool = 'inspect';
@@ -867,9 +1237,19 @@ function resize() {
   cv.width = cw * dpr; cv.height = ch * dpr; cv.style.width = cw + 'px'; cv.style.height = ch + 'px';
 }
 function centerCamera(x, y) { hw = TW / 2 * zoom; hh = TH / 2 * zoom; camX = cw / 2 - (x - y) * hw; camY = ch / 2 - (x + y) * hh; }
-function ws(x, y) { return [(x - y) * hw + camX, (x + y) * hh + camY]; }
+function ws(x, y) { return [(x - y) * hw + camX, (x + y) * hh + camY - elev]; }
+function setElev(i) { elev = T[i].h * STEP * zoom; }
 function sw(sx, sy) { const a = (sx - camX) / hw, b = (sy - camY) / hh; return [(a + b) / 2, (b - a) / 2]; }
-function tileAt(sx, sy) { const [x, y] = sw(sx, sy); const tx = Math.floor(x), ty = Math.floor(y); return inb(tx, ty) ? [tx, ty] : null; }
+function tileAt(sx, sy) {
+  // 높이를 고려해 화면 좌표 아래에 보이는 가장 앞쪽 타일을 찾는다
+  let best = null, bd = -1;
+  for (let h = 0; h <= MAXH; h++) {
+    const [x, y] = sw(sx, sy + h * STEP * zoom); const tx = Math.floor(x), ty = Math.floor(y);
+    if (inb(tx, ty) && T[idx(tx, ty)].h === h && tx + ty > bd) { bd = tx + ty; best = [tx, ty]; }
+  }
+  if (best) return best;
+  const [x, y] = sw(sx, sy + STEP * zoom); const tx = Math.floor(x), ty = Math.floor(y); return inb(tx, ty) ? [tx, ty] : null;
+}
 function setZoom(nz, sx, sy) {
   nz = clamp(nz, 0.2, 3);
   const [wx, wy] = sw(sx, sy);
@@ -891,13 +1271,27 @@ function diamond(x, y, fill, inset, stroke) {
 function heat(v) { v = clamp(v, 0, 1); return `hsla(${(1 - v) * 120},80%,48%,0.62)`; }
 
 const GRASS = ['#6aa84f', '#66a34b', '#70ad52', '#62a048'];
+const SEASON_GRASS = { winter: ['#e6ecef', '#dde5ea', '#edf1f3', '#d9e2e7'], spring: ['#74b84f', '#6db24b', '#7bbd57', '#68ad48'], summer: GRASS, autumn: ['#9aa54f', '#a2a24c', '#93a052', '#a89f4a'] };
+function season() { const m = S ? S.month : 5; return m === 11 || m <= 1 ? 'winter' : m <= 4 ? 'spring' : m <= 7 ? 'summer' : 'autumn'; }
+let SEASON = 'summer';
+function cliff(x, y, t) {
+  // 앞쪽 두 면(+x, +y)에 절벽 그리기
+  const h0 = t.h;
+  const nr = x + 1 < W ? T[idx(x + 1, y)].h : -1, nl = y + 1 < H ? T[idx(x, y + 1)].h : -1;
+  const base = t.ter === 1 ? '#2f6aa3' : SEASON === 'winter' ? '#9e9e9e' : '#8d6e63';
+  if (h0 > nr) { const a = ws(x + 1, y), b = ws(x + 1, y + 1), d = (h0 - nr) * STEP * zoom; poly([a, b, [b[0], b[1] + d], [a[0], a[1] + d]], shade(base, 0.62)); }
+  if (h0 > nl) { const a = ws(x, y + 1), b = ws(x + 1, y + 1), d = (h0 - nl) * STEP * zoom; poly([a, b, [b[0], b[1] + d], [a[0], a[1] + d]], shade(base, 0.8)); }
+}
 function drawGround(x, y, t, time) {
   const i = idx(x, y);
   if (t.ter === 1) {
     diamond(x, y, (x + y + ((time / 900) | 0)) % 7 === 0 ? '#4a90d0' : '#3d85c6');
     if (zoom > 0.6) { const [sx, sy] = ws(x + 0.5, y + 0.5); ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1; const o = Math.sin(time / 600 + x * 0.7 + y) * 4 * zoom; ctx.beginPath(); ctx.moveTo(sx - 8 * zoom + o, sy); ctx.lineTo(sx - 2 * zoom + o, sy); ctx.stroke(); }
-  } else diamond(x, y, GRASS[t.v]);
-  if (t.k === 'zone') {
+  } else diamond(x, y, SEASON_GRASS[SEASON][t.v]);
+  if (t.k === 'rail') {
+    if (t.ter === 1) diamond(x, y, '#6d4c41', 0.12); else diamond(x, y, '#a1887f', 0.12);
+    drawRails(x, y);
+  } else if (t.k === 'zone') {
     if (t.lvl === 0) {
       diamond(x, y, '#d6d2b4', 0.03, null);
       diamond(x, y, ZCOL[t.z] + '70', 0.06, null);
@@ -907,12 +1301,13 @@ function drawGround(x, y, t, time) {
     if (t.rub) drawRubble(x, y);
   } else if (isRoad(t)) {
     if (t.ter === 1) { diamond(x, y, '#8d6e63', 0.1); }
-    const av = t.k === 'avenue';
-    diamond(x, y, av ? '#4f5357' : '#6b6e72', t.ter ? 0.14 : 0.02);
+    const av = t.k === 'avenue', hw2 = t.k === 'hwy';
+    diamond(x, y, hw2 ? '#3a3d40' : av ? '#4f5357' : '#6b6e72', t.ter ? 0.14 : hw2 ? 0 : 0.02);
+    if (hw2 && zoom > 0.45) { ctx.lineWidth = Math.max(1, zoom); diamond(x, y, null, 0.08, 'rgba(255,255,255,0.55)'); }
     // 차선
     if (zoom > 0.45) {
       const c = ws(x + 0.5, y + 0.5);
-      ctx.strokeStyle = av ? '#f4d03f' : 'rgba(255,255,255,0.75)'; ctx.lineWidth = Math.max(1, zoom * (av ? 1.6 : 1));
+      ctx.strokeStyle = av || hw2 ? '#f4d03f' : 'rgba(255,255,255,0.75)'; ctx.lineWidth = Math.max(1, zoom * (av || hw2 ? 1.6 : 1));
       ctx.setLineDash([3 * zoom, 3 * zoom]);
       let n = 0;
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
@@ -921,9 +1316,8 @@ function drawGround(x, y, t, time) {
       }
       ctx.setLineDash([]);
     }
-    if (overlay === 'traffic' || (zoom > 0.6 && M.cong[i] > 0.9)) {
-      if (overlay !== 'traffic' && M.cong[i] > 0.9) diamond(x, y, 'rgba(230,60,40,0.25)', 0.25);
-    }
+    if (t.rl) drawRails(x, y);
+    if (overlay !== 'traffic' && zoom > 0.6 && M.cong[i] > 0.9) diamond(x, y, 'rgba(230,60,40,0.25)', 0.25);
   } else if (t.k === 'bld') {
     const b = BLD[T[t.o].b];
     if (b.flat === 'park') diamond(x, y, '#4e9a3a');
@@ -937,6 +1331,35 @@ function drawGround(x, y, t, time) {
     if (t.ter === 1) diamond(x, y, '#3d85c6'); else diamond(x, y, '#8b7d6b'); drawRubble(x, y);
   } else if (t.k === 'power' && t.ter === 0) { /* 잔디 위 송전선 */ }
 }
+function drawRails(x, y) {
+  if (zoom < 0.35) return;
+  const c = ws(x + 0.5, y + 0.5);
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const nx = x + dx, ny = y + dy; if (!inb(nx, ny) || !(isRail(T[idx(nx, ny)]) || (T[idx(nx, ny)].k === 'bld' && BLD[T[T[idx(nx, ny)].o].b].needRail))) continue;
+    const e = ws(x + 0.5 + dx * 0.5, y + 0.5 + dy * 0.5);
+    // 침목
+    ctx.strokeStyle = '#5d4037'; ctx.lineWidth = 3 * zoom; ctx.setLineDash([1.5 * zoom, 3 * zoom]); ctx.beginPath(); ctx.moveTo(c[0], c[1]); ctx.lineTo(e[0], e[1]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = '#cfd8dc'; ctx.lineWidth = Math.max(1, 0.9 * zoom);
+    const px = dy !== 0 ? 2.5 * zoom : 2.5 * zoom, py = dy !== 0 ? -1.25 * zoom : 1.25 * zoom;
+    for (const sgn of [-1, 1]) { ctx.beginPath(); ctx.moveTo(c[0] + px * sgn, c[1] + py * sgn); ctx.lineTo(e[0] + px * sgn, e[1] + py * sgn); ctx.stroke(); }
+  }
+}
+const CAR_COLS = ['#e53935', '#1e88e5', '#fdd835', '#f5f5f5', '#43a047', '#212121', '#fb8c00'];
+function drawCars(x, y, t, time) {
+  const i = idx(x, y); const cg = M.cong[i]; if (cg < 0.05) return;
+  const n = Math.min(t.k === 'hwy' ? 6 : 4, Math.ceil(cg * 3));
+  const ex = (x + 1 < W && isRoad(T[idx(x + 1, y)])) || (x > 0 && isRoad(T[idx(x - 1, y)]));
+  const ey = (y + 1 < H && isRoad(T[idx(x, y + 1)])) || (y > 0 && isRoad(T[idx(x, y - 1)]));
+  const alongX = ex || !ey;
+  for (let k = 0; k < n; k++) {
+    const dir = k % 2 ? 1 : -1, sp = cg > 1.2 ? 0.25 : 1;
+    let f = ((time / 2200) * sp * dir + k * 0.37 + (x * 13 + y * 7) * 0.031) % 1; if (f < 0) f += 1;
+    const lane = 0.5 + dir * 0.17;
+    const cx = alongX ? x + f : x + lane, cy = alongX ? y + lane : y + f;
+    const sx = alongX ? 0.2 : 0.12, sy = alongX ? 0.12 : 0.2;
+    box(cx - sx / 2, cy - sy / 2, sx, sy, 0, 4, CAR_COLS[(k + x + y) % CAR_COLS.length]);
+  }
+}
 function drawRubble(x, y) {
   if (zoom < 0.5) { diamond(x, y, '#7b6a58', 0.2); return; }
   ctx.fillStyle = '#6d5f50';
@@ -946,9 +1369,9 @@ function drawTree(x, y, k, s) {
   const [sx, sy] = ws(x, y);
   const h = 14 * zoom * s;
   ctx.fillStyle = '#5d4037'; ctx.fillRect(sx - 1 * zoom, sy - h * 0.35, 2 * zoom, h * 0.35);
-  ctx.fillStyle = k % 2 ? '#2e7d32' : '#388e3c';
+  ctx.fillStyle = SEASON === 'autumn' && k % 3 !== 0 ? (k % 2 ? '#d35400' : '#e6a020') : SEASON === 'spring' && k % 4 === 1 ? '#f48fb1' : k % 2 ? '#2e7d32' : '#388e3c';
   ctx.beginPath(); ctx.moveTo(sx, sy - h * 1.2); ctx.lineTo(sx + 5.5 * zoom * s, sy - h * 0.25); ctx.lineTo(sx - 5.5 * zoom * s, sy - h * 0.25); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.beginPath(); ctx.moveTo(sx, sy - h * 1.2); ctx.lineTo(sx - 5.5 * zoom * s, sy - h * 0.25); ctx.lineTo(sx, sy - h * 0.3); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = SEASON === 'winter' ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.08)'; ctx.beginPath(); ctx.moveTo(sx, sy - h * 1.2); ctx.lineTo(sx - 5.5 * zoom * s, sy - h * 0.25); ctx.lineTo(sx, sy - h * 0.3); ctx.closePath(); ctx.fill();
 }
 function drawTrees(x, y, t) {
   const n = 1 + (t.v % 3);
@@ -969,10 +1392,13 @@ function windows(bx, floors, col) {
   if (zoom < 0.7 || floors < 1) return;
   const { b, c, d, H: Hh } = bx; const fh = Hh / (floors + 0.5);
   ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, 1.6 * zoom); ctx.setLineDash([2.5 * zoom, 2.5 * zoom]);
+  const glow = nightK > 0.12 && !/^rgba\((40|60),/.test(col) && lights.length < 8000;
   for (let f = 0; f < floors; f++) {
     const oy = -(f + 0.6) * fh;
-    ctx.beginPath(); ctx.moveTo(d[0] + (c[0] - d[0]) * 0.15, d[1] + (c[1] - d[1]) * 0.15 + oy); ctx.lineTo(d[0] + (c[0] - d[0]) * 0.88, d[1] + (c[1] - d[1]) * 0.88 + oy); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(c[0] + (b[0] - c[0]) * 0.12, c[1] + (b[1] - c[1]) * 0.12 + oy); ctx.lineTo(c[0] + (b[0] - c[0]) * 0.85, c[1] + (b[1] - c[1]) * 0.85 + oy); ctx.stroke();
+    const l1 = [d[0] + (c[0] - d[0]) * 0.15, d[1] + (c[1] - d[1]) * 0.15 + oy, d[0] + (c[0] - d[0]) * 0.88, d[1] + (c[1] - d[1]) * 0.88 + oy];
+    const l2 = [c[0] + (b[0] - c[0]) * 0.12, c[1] + (b[1] - c[1]) * 0.12 + oy, c[0] + (b[0] - c[0]) * 0.85, c[1] + (b[1] - c[1]) * 0.85 + oy];
+    ctx.beginPath(); ctx.moveTo(l1[0], l1[1]); ctx.lineTo(l1[2], l1[3]); ctx.moveTo(l2[0], l2[1]); ctx.lineTo(l2[2], l2[3]); ctx.stroke();
+    if (glow && (f * 7 + floors) % 3 !== 0) { lights.push(l1); if (f % 2) lights.push(l2); }
   }
   ctx.setLineDash([]);
 }
@@ -1027,6 +1453,12 @@ function drawZoneBld(x, y, t, time) {
       windows(bx, Math.round(hgt / 7), ab ? lit : 'rgba(210,235,255,0.75)');
       if (L >= 6 && zoom > 0.6) { const tp = bx.up(bx.a), cc = bx.up(bx.c); const mx = (tp[0] + cc[0]) / 2, my = (tp[1] + cc[1]) / 2; ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1.5 * zoom; ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(mx, my - 14 * zoom); ctx.stroke(); }
     }
+  } else if (t.sec === 'agri') {
+    // 농장: 밭고랑 + 작은 헛간
+    const crop = SEASON === 'winter' ? '#cfd8dc' : SEASON === 'autumn' ? '#e0b44c' : SEASON === 'spring' ? '#9ccc65' : '#7cb342';
+    diamond(x, y, crop, 0.04);
+    if (zoom > 0.5) { ctx.strokeStyle = 'rgba(80,60,30,0.35)'; ctx.lineWidth = Math.max(1, zoom); for (let k = 1; k < 5; k++) { const a = ws(x + k / 5, y + 0.05), b = ws(x + k / 5, y + 0.95); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); } }
+    if (L >= 2 || v % 2) { const bx = box(x + 0.62, y + 0.62, 0.3, 0.3, 0, 9, dim('#b23b2e')); roof(bx, dim('#5d4037'), 5); }
   } else {
     const hi = t.hi && !ab;
     const hgt = [0, 10, 14, 18, 22, 28, 34, 40, 48][L];
@@ -1115,6 +1547,34 @@ function drawFire(x, y, time) {
   }
   smoke(sx, sy - 24 * zoom, x + y, time, true);
 }
+let tod = 0.1, dayNight = true, nightK = 0, lights = [];
+function drawEffects(time) {
+  for (const r of riots) {
+    setElev(idx(r.x | 0, r.y | 0)); const [sx, sy] = ws(r.x, r.y);
+    for (let k = 0; k < 12; k++) { const a = k * 0.52 + time / 400, rr = (6 + (k % 4) * 4) * zoom; ctx.fillStyle = k % 3 ? '#e53935' : '#ffb300'; ctx.beginPath(); ctx.arc(sx + Math.cos(a) * rr, sy + Math.sin(a) * rr * 0.5, 2.2 * zoom, 0, 7); ctx.fill(); }
+    ctx.font = `${18 * zoom}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('✊', sx, sy - 14 * zoom);
+  }
+  if (meteor) {
+    const p = (performance.now() - meteor.t0) / 1300;
+    if (p >= 1) meteorImpact();
+    else { setElev(idx(meteor.x, meteor.y)); const [tx, ty] = ws(meteor.x + 0.5, meteor.y + 0.5); const sx = tx + (1 - p) * 500, sy = ty - (1 - p) * 700;
+      const g = ctx.createLinearGradient(sx + 80, sy - 110, sx, sy); g.addColorStop(0, 'rgba(255,200,80,0)'); g.addColorStop(1, 'rgba(255,120,40,0.95)');
+      ctx.strokeStyle = g; ctx.lineWidth = 8 * zoom; ctx.beginPath(); ctx.moveTo(sx + 80, sy - 110); ctx.lineTo(sx, sy); ctx.stroke(); ctx.fillStyle = '#ffeb3b'; ctx.beginPath(); ctx.arc(sx, sy, 7 * zoom, 0, 7); ctx.fill(); }
+  }
+  // 밤: 어둡게 덮고 창문·가로등 불빛을 더한다
+  if (nightK > 0.02) {
+    ctx.fillStyle = `rgba(8,14,42,${nightK})`; ctx.fillRect(-50, -50, cw + 100, ch + 100);
+    if (lights.length) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(255,214,120,${Math.min(1, nightK * 1.5)})`; ctx.setLineDash([2.5 * zoom, 2.5 * zoom]); ctx.lineWidth = Math.max(1, 1.6 * zoom);
+      ctx.beginPath(); for (const l of lights) if (l.length === 4) { ctx.moveTo(l[0], l[1]); ctx.lineTo(l[2], l[3]); } ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = `rgba(255,200,110,${nightK * 0.55})`;
+      for (const l of lights) if (l.length === 2) { ctx.beginPath(); ctx.arc(l[0], l[1], 5 * zoom, 0, 7); ctx.fill(); }
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  }
+  lights = [];
+}
 function overlayColor(i, t) {
   switch (overlay) {
     case 'lv': return heat(1 - M.lv[i] / 180);
@@ -1123,6 +1583,9 @@ function overlayColor(i, t) {
     case 'traffic': return isRoad(t) ? heat(M.cong[i] / 1.5) : null;
     case 'power': if (conducts(t)) return t.pw ? 'rgba(255,235,59,0.6)' : 'rgba(244,67,54,0.6)'; return null;
     case 'water': if ((t.k === 'zone') || (t.k === 'bld' && !BLD[T[t.o].b].flat)) return t.wt ? 'rgba(33,150,243,0.6)' : 'rgba(244,67,54,0.5)'; if (isRoad(t)) return 'rgba(144,202,249,0.35)'; return null;
+    case 'wpol': return M.wpol[i] > 2 ? heat(M.wpol[i] / 60) : null;
+    case 'height': return t.ter ? null : `hsla(${130 - t.h * 15},55%,45%,0.6)`;
+    case 'commute': return t.k === 'zone' ? heat(1 - M.commute[i]) : null;
     case 'police': case 'fire': case 'health': case 'edu': { const v = M[overlay][i]; return v > 1 ? `rgba(79,195,247,${clamp(v / 110, 0.08, 0.7)})` : null; }
   }
   return null;
@@ -1137,11 +1600,16 @@ function render(time) {
   hw = TW / 2 * zoom; hh = TH / 2 * zoom;
   const margin = TW * zoom * 2;
   const vis = (x, y, extraUp) => { const [sx, sy] = ws(x, y); return sx > -margin && sx < cw + margin && sy > -margin - (extraUp || 0) && sy < ch + margin; };
-  // 지면
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { if (!vis(x, y)) continue; drawGround(x, y, T[idx(x, y)], time); }
+  SEASON = season();
+  // 지면 (뒤에서 앞으로, 절벽 포함)
+  for (let s = 0; s <= W + H - 2; s++) for (let x = Math.max(0, s - H + 1); x <= Math.min(s, W - 1); x++) {
+    const y = s - x; if (!vis(x, y, MAXH * STEP * zoom)) continue; const i = idx(x, y), t = T[i];
+    setElev(i); drawGround(x, y, t, time); cliff(x, y, t);
+    if (floodSet && floodSet.has(i)) diamond(x, y, 'rgba(61,133,198,0.72)');
+  }
   // 오버레이
   if (overlay !== 'none') {
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { if (!vis(x, y)) continue; const i = idx(x, y); const c = overlayColor(i, T[i]); if (c) diamond(x, y, c); }
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { if (!vis(x, y, MAXH * STEP * zoom)) continue; const i = idx(x, y); const c = overlayColor(i, T[i]); if (c) { setElev(i); diamond(x, y, c); } }
   }
   // 미리보기 (지면)
   drawPreview();
@@ -1153,8 +1621,11 @@ function render(time) {
     for (let x = Math.max(0, s - H + 1); x <= Math.min(s, W - 1); x++) {
       const y = s - x; if (!vis(x, y, tallUp)) continue;
       const i = idx(x, y), t = T[i];
+      setElev(i);
+      if (isRoad(t) && zoom > 0.55 && overlay === 'none') drawCars(x, y, t, time);
+      if (nightK > 0.12 && isRoad(t) && (x + y) % 2 === 0 && lights.length < 8000) lights.push(ws(x + 0.5, y + 0.5));
       if (t.k === 'zone' && t.lvl > 0) drawZoneBld(x, y, t, time);
-      else if (t.k === 'bld') { const o = t.o, b = BLD[T[o].b]; if (x === (o % W) + b.sz - 1 && y === ((o / W) | 0) + b.sz - 1) drawBld(o, time); }
+      else if (t.k === 'bld') { const o = t.o, b = BLD[T[o].b]; if (x === (o % W) + b.sz - 1 && y === ((o / W) | 0) + b.sz - 1) { setElev(o); drawBld(o, time); setElev(i); } }
       if (t.tree && t.k !== 'bld') drawTrees(x, y, t);
       if (powerLineAt(t) && zoom > 0.4) drawPole(x, y);
       if (t.burn) { ctx.globalAlpha = 1; drawFire(x, y, time); ctx.globalAlpha = alpha; }
@@ -1165,9 +1636,12 @@ function render(time) {
   }
   ctx.globalAlpha = 1;
   if (tornado) {
+    if (inb(tornado.x | 0, tornado.y | 0)) setElev(idx(tornado.x | 0, tornado.y | 0));
     const [sx, sy] = ws(tornado.x, tornado.y);
     for (let k = 0; k < 10; k++) { const r = (4 + k * 2.6) * zoom; const off = Math.sin(time / 120 + k) * 4 * zoom; ctx.fillStyle = `rgba(90,90,100,${0.55 - k * 0.03})`; ctx.beginPath(); ctx.ellipse(sx + off, sy - k * 8 * zoom, r, r * 0.35, 0, 0, 7); ctx.fill(); }
   }
+  drawEffects(time);
+  elev = 0;
   // 떠오르는 글자
   const now = performance.now();
   floats = floats.filter(f => now - f.t < 1200);
@@ -1190,6 +1664,7 @@ function drawPreview() {
   const tl = TOOLS[tool];
   for (const [x, y] of p.tiles) {
     if (!inb(x, y)) continue;
+    setElev(idx(x, y));
     let ok = p.ok;
     if (ok === undefined) ok = p.neutral || tl.type === 'click' ? true : opTile(tool, x, y, true) >= 0;
     const col = p.neutral ? 'rgba(255,255,255,0.25)' : ok ? (tl.zone ? ZCOL[tl.zone[0]] + '99' : 'rgba(129,199,132,0.55)') : 'rgba(239,83,80,0.55)';
@@ -1198,7 +1673,7 @@ function drawPreview() {
   // 서비스 범위 표시
   if (tl.type === 'place' && hover) {
     const b = BLD[tl.bld]; const rr = b.r || b.pr || b.bus || b.lr;
-    if (rr) { const [ox, oy] = placeOrigin(tool, hover[0], hover[1]); const c = ws(ox + b.sz / 2, oy + b.sz / 2); ctx.strokeStyle = 'rgba(79,195,247,0.8)'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.ellipse(c[0], c[1], rr * hw * Math.SQRT2, rr * hh * Math.SQRT2, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+    if (rr) { const [ox, oy] = placeOrigin(tool, hover[0], hover[1]); if (inb(ox, oy)) setElev(idx(ox, oy)); const c = ws(ox + b.sz / 2, oy + b.sz / 2); ctx.strokeStyle = 'rgba(79,195,247,0.8)'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.ellipse(c[0], c[1], rr * hw * Math.SQRT2, rr * hh * Math.SQRT2, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
   }
 }
 function previewCost() {
@@ -1286,7 +1761,7 @@ function endPointer(e) {
     const tl = TOOLS[tool];
     if (end && drag.start) {
       if (tl.type === 'line') applyTool(tool, lineTiles(drag.start, end));
-      else if (tl.type === 'rect') applyTool(tool, rectTiles(drag.start, end));
+      else if (tl.type === 'rect') applyTool(tool, rectTiles(drag.start, end), drag.start);
       else applyTool(tool, [end]);
     }
   }
@@ -1330,7 +1805,7 @@ function updateTip(mx, my) {
   }
   tip.style.left = (mx + 16) + 'px'; tip.style.top = (my + 14) + 'px';
 }
-function floatText(s) { const p = hover ? ws(hover[0] + 0.5, hover[1] + 0.5) : [cw / 2, ch / 2]; floats.push({ s, x: p[0], y: p[1] - 20, t: performance.now() }); }
+function floatText(s) { if (hover) setElev(idx(hover[0], hover[1])); const p = hover ? ws(hover[0] + 0.5, hover[1] + 0.5) : [cw / 2, ch / 2]; elev = 0; floats.push({ s, x: p[0], y: p[1] - 20, t: performance.now() }); }
 let flashT = 0;
 function flash(msg) { const el = $('tickText'); el.textContent = msg; el.className = 'bad'; $('tickIcon').textContent = '⛔'; sfx('err'); }
 
@@ -1363,10 +1838,10 @@ function openSub(k) {
   curCat = k; const c = CATS[k]; const sub = $('sub'); sub.innerHTML = `<div class="subhead">${c.n}</div>`;
   for (const key of c.tools) {
     const tl = TOOLS[key]; const b = BLD[tl.bld];
-    const locked = b && ((b.reward && !S.rewards[key]) || (b.unlock && !S.unlocked[key]));
-    const built = b && b.reward && S.rewards[key] === 'built';
+    const locked = b && ((b.reward && !S.rewards[key]) || (b.unlock && !S.unlocked[key]) || (b.biz && !S.biz[key]));
+    const built = b && ((b.reward && S.rewards[key] === 'built') || (b.biz && S.biz[key] === 'built'));
     const el = document.createElement('button'); el.className = 'tool' + (tool === key ? ' on' : '') + (locked || built ? ' locked' : '');
-    const desc = locked ? `인구 ${fmt(b.reward || b.unlock)} 달성 시 해금` : built ? '건설 완료' : (tl.d || (tl.zone ? ZNAME[tl.zone[0]] + ' 구역 (' + DNAME[tl.zone[1]] + ')' : ''));
+    const desc = locked ? (b.biz ? '사업 제안을 받으면 지을 수 있음' : `인구 ${fmt(b.reward || b.unlock)} 달성 시 해금`) : built ? '건설 완료' : (tl.d || (tl.zone ? ZNAME[tl.zone[0]] + ' 구역 (' + DNAME[tl.zone[1]] + ')' : ''));
     const cost = tl.cost ? '₩' + fmt(tl.cost) + (b ? '' : '') : (b && b.reward ? '무료' : '');
     el.innerHTML = `<span class="ic">${tl.ico}</span><span class="nm">${tl.n}<small>${desc}</small></span><span class="co">${cost}</span>`;
     el.onclick = e => { e.stopPropagation(); if (locked || built) return; selectTool(key); closeSub(); };
@@ -1389,7 +1864,7 @@ document.querySelectorAll('.sp').forEach(b => b.onclick = () => setSpeed(+b.data
 function refreshUI() {
   if (!S) return;
   $('cityName').textContent = S.name;
-  $('date').textContent = dateStr();
+  $('date').textContent = dateStr() + ' ' + ({ winter: '❄️', spring: '🌸', summer: '☀️', autumn: '🍁' })[season()];
   const m = $('money'); m.textContent = '₩ ' + fmt(S.money); m.classList.toggle('neg', S.money < 0);
   $('pop').textContent = fmt(RT.pop); $('rank').textContent = cityRank(RT.pop);
   for (const z of ['R', 'C', 'I']) {
@@ -1435,7 +1910,12 @@ function showInfo(x, y, refresh) {
     if (b.mt) lines.push(`유지비: 월 ₩${fmt(b.mt)}`);
     if (b.d) lines.push(`<small style="color:var(--muted)">${b.d}</small>`);
   }
+  if (t.k === 'zone' && t.z === 'I' && t.lvl && t.sec) lines.push(`업종: <b>${secOf(t).n}</b>` + (secOf(t).hi ? ' (첨단)' : ''));
+  if (t.k === 'zone' && M.commute[i] < 0.8) lines.push(`<span style="color:#ffca28">⚠ 같은 도로망에 ${t.z === 'R' ? '일자리' : '일할 사람'}가 부족 (통근 ${Math.round(M.commute[i] * 100)}%)</span>`);
+  if (t.k === 'bld' && BLD[T[t.o].b].railR) lines.push(T[t.o].rc ? '🚆 철도망 연결됨' : '<span style="color:#ffca28">⚠ 다른 역이나 이웃 도시와 철도로 이어지지 않음</span>');
   lines.push(`<div style="margin-top:6px">지가 ${Math.round(M.lv[i])}${bar(M.lv[i], 200, '#66bb6a')}</div>`);
+  if (M.wpol[i] > 3) lines.push(`수질 오염 ${Math.round(M.wpol[i])}${bar(M.wpol[i], 100, '#8d6e63')}`);
+  lines.push(`<small style="color:var(--muted)">높이 ${t.h}단</small>`);
   lines.push(`오염 ${Math.round(M.pol[i])}${bar(M.pol[i], 100, '#a1887f')}`);
   lines.push(`범죄 ${Math.round(M.crime[i])}${bar(M.crime[i], 100, '#ef5350')}`);
   if (conducts(t) || t.k === 'zone') lines.push(`전력: ${t.pw ? '✅' : '❌'} · 수도: ${t.wt ? '✅' : '❌'}`);
@@ -1447,8 +1927,9 @@ function showInfo(x, y, refresh) {
 
 // 모달
 let modalOpen = null;
-function openModal(name, title, html) { modalOpen = name; $('ptitle').textContent = title; $('pbody').innerHTML = html; $('modal').classList.remove('hidden'); }
-function closeModal() { if (modalOpen === 'newgame' && !S) return; modalOpen = null; $('modal').classList.add('hidden'); }
+let modalOnClose = null;
+function openModal(name, title, html) { modalOnClose = null; modalOpen = name; $('ptitle').textContent = title; $('pbody').innerHTML = html; $('modal').classList.remove('hidden'); }
+function closeModal() { if (modalOpen === 'newgame' && !S) return; const f = modalOnClose; modalOnClose = null; modalOpen = null; $('modal').classList.add('hidden'); if (f) f(); }
 $('pclose').onclick = closeModal;
 $('modal').addEventListener('pointerdown', e => { if (e.target === $('modal')) closeModal(); });
 
@@ -1462,6 +1943,9 @@ function renderBudget() {
   <div class="kv"><span>보유 자금</span><b>₩${fmt(S.money)}</b></div>
   <h3>세율 (높으면 수요·지지율 하락)</h3>
   ${slider('tax', 'R', '주거세', 0, 20)}${slider('tax', 'C', '상업세', 0, 20)}${slider('tax', 'I', '공업세', 0, 20)}
+  <h3>업종별 공업세 조정 (기본 공업세에 ± 가감)</h3>
+  <small style="color:var(--muted)">세율을 낮춘 업종은 더 많이 들어오고, 높인 업종은 줄어듭니다. 오염이 심한 업종에 세금을 올려 보세요.</small>
+  ${SECKEYS.map(k => `<div class="row"><label>${SECT[k].n}</label><input type="range" min="-3" max="3" value="${S.secTax[k] || 0}" data-g="secTax" data-k="${k}"><span class="val">${(S.secTax[k] > 0 ? '+' : '') + (S.secTax[k] || 0)}%p</span></div>`).join('')}
   <h3>부서 예산 (낮추면 서비스 효과 감소)</h3>
   ${Object.entries(DEPTS).map(([k, n]) => slider('fund', k, n, 0, 120)).join('')}
   <h3>대출</h3>
@@ -1469,7 +1953,7 @@ function renderBudget() {
   <div class="row" style="margin-top:8px"><button class="btn" id="loan1" ${S.loans.length >= 3 ? 'disabled' : ''}>₩10,000 대출 (10년)</button><button class="btn sec" id="loan2" ${S.loans.length >= 3 ? 'disabled' : ''}>₩30,000 대출 (10년)</button></div>`;
   const body = $('pbody'); const st = body.scrollTop; body.innerHTML = html; body.scrollTop = st;
   body.querySelectorAll('input[type=range]').forEach(inp => {
-    inp.oninput = () => { S[inp.dataset.g][inp.dataset.k] = +inp.value; inp.nextElementSibling.textContent = inp.value + '%'; };
+    inp.oninput = () => { S[inp.dataset.g][inp.dataset.k] = +inp.value; inp.nextElementSibling.textContent = inp.dataset.g === 'secTax' ? ((+inp.value > 0 ? '+' : '') + inp.value + '%p') : inp.value + '%'; };
     inp.onchange = () => { computeCoverage(); renderBudget(); };
   });
   const loan = amt => { const rate = 6 + S.loans.length * 2; const r = rate / 1200, n = 120; const pay = amt * r / (1 - Math.pow(1 + r, -n)); S.loans.push({ amt, rate, pay, left: n }); S.money += amt; news(`₩${fmt(amt)}을 대출받았습니다.`, 'info'); refreshUI(); renderBudget(); };
@@ -1511,7 +1995,10 @@ function renderStats() {
    ${kv('쓰레기 (월)', fmt(RT.garbage) + 't · 처리 ' + fmt(RT.garbageDone) + 't')}${kv('미수거 쓰레기', fmt(S.garbageStock) + 't')}
    ${kv('평균 범죄', Math.round(RT.avgCrime))}${kv('평균 오염', Math.round(RT.avgPol))}
    ${kv('교통 혼잡', Math.round(RT.avgCong * 100) + '%')}${kv('매립지 잔여', fmt(RT.landfillLeft || 0) + 't')}
+   ${kv('수질', Math.round(RT.waterQ === undefined ? 100 : RT.waterQ) + '점')}${kv('하수 처리', RT.pop > 800 ? Math.round((1 - (RT.untreated || 0)) * 100) + '%' : '불필요')}
+   ${kv('수감자 / 정원', fmt(S.inmates || 0) + ' / ' + fmt(RT.jailCap || 0))}${kv('기차역 (연결)', (RT.stations || 0) + ' (' + (RT.stationsLinked || 0) + ')')}
   </div>
+  <h3>산업 구성</h3>${(() => { const tot = Object.values(RT.secJobs || {}).reduce((a, b) => a + b, 0) || 1; return SECKEYS.map(k => { const v = (RT.secJobs || {})[k] || 0; return `<div class="row" style="margin:3px 0"><label style="flex-basis:96px">${SECT[k].n}</label><div class="bar" style="flex:1;height:10px"><i style="width:${v / tot * 100}%;background:${SECT[k].hi ? '#4fc3f7' : k === 'agri' ? '#9ccc65' : '#ffb74d'}"></i></div><span class="val">${Math.round(v / tot * 100)}%</span></div>`; }).join(''); })()}
   <h3>인구 (최근 10년)</h3><canvas class="chart" id="ch1"></canvas>
   <h3>주거 / 상업 / 공업</h3><div class="legendrow"><span><i style="background:var(--R)"></i>주민</span><span><i style="background:var(--C)"></i>상업 일자리</span><span><i style="background:var(--I)"></i>공업 일자리</span></div><canvas class="chart" id="ch2"></canvas>
   <h3>자금</h3><canvas class="chart" id="ch3"></canvas>
@@ -1522,6 +2009,94 @@ function renderStats() {
 }
 $('bStats').onclick = () => { openModal('stats', '📊 도시 통계'); renderStats(); };
 
+// 이웃 도시
+let nbOffers = {};
+function dealOffer(side, type) {
+  const sc = Math.max(1, RT.pop / 20000);
+  const r = (a, b) => a + rnd() * (b - a);
+  const amt = Math.round(type[0] === 'p' ? r(50, 300) * sc : type[0] === 'w' ? r(100, 500) * sc : r(200, 1000) * sc);
+  const price = +({ pSell: r(0.18, 0.3), pBuy: r(0.3, 0.45), wSell: r(0.12, 0.2), wBuy: r(0.22, 0.34), gExp: r(0.4, 0.7) })[type].toFixed(2);
+  return { side, type, amt, price, left: 120 };
+}
+function renderNb() {
+  const need = { pSell: 'power', pBuy: 'power', wSell: 'water', wBuy: 'water', gExp: 'any' };
+  const has = (c, n) => n === 'power' ? c.power : n === 'water' ? (c.road || c.hwy) : (c.road || c.hwy || c.rail);
+  let html = `<small style="color:var(--muted)">지도 가장자리까지 도로·고속도로·철도를 이으면 이웃과 연결됩니다. 연결되면 일자리와 손님이 늘고(수요 증가), 전기·물·쓰레기를 사고팔 수 있습니다. 전기는 송전선, 물은 도로(상수도관)로 이어야 합니다. 계약 기간은 10년입니다.</small>`;
+  for (const nb of S.nb) {
+    const c = RT.conn ? RT.conn[nb.side] : { road: 0, hwy: 0, rail: 0, power: 0 };
+    const ic = (on, e, n) => `<span title="${n}" style="opacity:${on ? 1 : 0.25}">${e}</span>`;
+    html += `<h3>${nb.name} <small style="color:var(--muted);font-weight:normal">${SIDE_NAMES[nb.side]} · 인구 ${fmt(nb.pop)}</small></h3>
+    <div class="row" style="gap:12px;font-size:18px">${ic(c.road, '🛣️', '도로')}${ic(c.hwy, '🚘', '고속도로')}${ic(c.rail, '🚆', '철도')}${ic(c.power, '⚡', '송전선')}</div>`;
+    for (const d of S.deals.filter(d => d.side === nb.side)) {
+      const [n, u, sg] = DEAL_T[d.type];
+      html += `<div class="kv"><span>${n} ${fmt(d.amt)}${u} × ₩${d.price} · ${d.left}개월 남음 ${RT.dealOk && RT.dealOk[d.id] === false ? '<b style="color:#ef5350">(연결 끊김)</b>' : ''}</span><span class="${sg > 0 ? 'pos' : 'negc'}">월 ₩${fmt(d.amt * d.price)} <button class="btn sec" style="padding:2px 6px" data-cancel="${d.id}">해지</button></span></div>`;
+    }
+    html += '<div class="row" style="flex-wrap:wrap;gap:6px">';
+    for (const ty of Object.keys(DEAL_T)) {
+      if (S.deals.some(d => d.side === nb.side && d.type === ty)) continue;
+      const key = nb.side + ty, of = nbOffers[key], ok = has(c, need[ty]);
+      if (of) html += `<div class="ord" style="width:100%;margin:2px 0"><div><b>${DEAL_T[ty][0]} 제안</b><small>${fmt(of.amt)}${DEAL_T[ty][1]} · 단가 ₩${of.price} → 월 ₩${fmt(of.amt * of.price)} ${DEAL_T[ty][2] > 0 ? '수입' : '지출'}</small></div><button class="btn" data-acc="${key}">수락</button><button class="btn sec" data-rej="${key}">거절</button></div>`;
+      else html += `<button class="btn sec" data-ask="${key}" ${ok ? '' : 'disabled title="연결이 필요합니다"'}>${DEAL_T[ty][0]} 협상</button>`;
+    }
+    html += '</div>';
+  }
+  $('pbody').innerHTML = html;
+  $('pbody').querySelectorAll('[data-ask]').forEach(b => b.onclick = () => { const k = b.dataset.ask; nbOffers[k] = dealOffer(+k[0], k.slice(1)); renderNb(); });
+  $('pbody').querySelectorAll('[data-rej]').forEach(b => b.onclick = () => { delete nbOffers[b.dataset.rej]; renderNb(); });
+  $('pbody').querySelectorAll('[data-acc]').forEach(b => b.onclick = () => { const of = nbOffers[b.dataset.acc]; delete nbOffers[b.dataset.acc]; S.dealSeq = (S.dealSeq || 0) + 1; of.id = S.dealSeq; S.deals.push(of); news(`🤝 ${S.nb[of.side].name}와 ${DEAL_T[of.type][0]} 계약을 맺었습니다.`, 'good'); monthlyMaps(); renderNb(); });
+  $('pbody').querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => { const d = S.deals.find(x => x.id === +b.dataset.cancel); if (!d) return; const fine = d.amt * d.price * 6; if (!confirm(`계약을 해지하면 위약금 ₩${fmt(fine)}을 냅니다. 해지할까요?`)) return; S.money -= fine; S.deals = S.deals.filter(x => x !== d); news(`${S.nb[d.side].name}와의 계약을 해지했습니다.`, 'warn'); refreshUI(); renderNb(); });
+}
+$('bNb').onclick = () => { openModal('nb', '🤝 이웃 도시'); renderNb(); };
+
+// 신문
+function renderPaper() {
+  const pick = k => S.news.find(n => n.kind === k);
+  const head = pick('bad') || pick('warn') || pick('good') || S.news[0] || { text: '평온한 하루' };
+  const dm = S.demand, b = RT.budget || { net: 0 };
+  const trend = S.hist.length > 12 ? RT.pop - S.hist[S.hist.length - 13].p : 0;
+  const ed = S.approval > 75 ? '시민들은 시정에 크게 만족하고 있다. 지금의 방향을 유지하길 바란다.' : S.approval > 55 ? '대체로 무난하지만, 시민들의 불만이 조금씩 쌓이고 있다.' : S.approval > 35 ? '시청을 향한 불만이 커지고 있다. 세금과 치안부터 돌아봐야 한다.' : '민심이 폭발 직전이다. 시장은 즉시 대책을 내놓아야 한다.';
+  const wx = { winter: '추운 겨울, 난방 수요로 전력 소비가 늘었습니다.', spring: '따뜻한 봄 날씨가 이어지고 있습니다.', summer: '무더운 여름, 냉방 전력 수요가 늘고 시민들이 예민해지는 시기입니다.', autumn: '선선한 가을, 단풍이 아름답습니다.' }[season()];
+  const big = Object.entries(RT.secJobs || {}).sort((a, b) => b[1] - a[1])[0];
+  $('pbody').innerHTML = `<div style="font-family:serif;border-bottom:3px double var(--line);text-align:center;padding-bottom:6px"><div style="font-size:26px;font-weight:bold;letter-spacing:4px">${S.name} 일보</div><small style="color:var(--muted)">${dateStr()} · 인구 ${fmt(RT.pop)} · ${cityRank(RT.pop)}</small></div>
+  <h2 style="font-size:19px;margin:12px 0 6px">${head.text.replace(/^[^가-힣「]*/, '')}</h2>
+  <div class="grid2">
+   <div><h3>경제</h3><p style="margin:4px 0;line-height:1.5">시 재정은 월 ₩${fmt(b.net)} ${b.net >= 0 ? '흑자' : '적자'}. 실업률 ${Math.round(RT.unemp * 100)}%. ${dm.R > 0.3 ? '집을 찾는 사람이 많다.' : dm.R < -0.2 ? '빈집이 늘고 있다.' : ''} ${dm.C > 0.3 ? '상가 임대 문의가 늘었다.' : ''} ${dm.I > 0.3 ? '공장 부지가 부족하다는 목소리.' : ''}${big && big[1] ? ` 지역 최대 산업은 ${SECT[big[0]].n}.` : ''}</p></div>
+   <div><h3>사회</h3><p style="margin:4px 0;line-height:1.5">지난 1년 인구 ${trend >= 0 ? '+' : ''}${fmt(trend)}명. 평균 범죄 지수 ${Math.round(RT.avgCrime)}, 기대수명 ${Math.round(S.life)}세, 교육 지수 ${Math.round(S.eq)}.${riots.length ? ' 시내에서 폭동이 이어지고 있다.' : ''}</p></div>
+   <div><h3>환경</h3><p style="margin:4px 0;line-height:1.5">대기오염 ${Math.round(RT.avgPol)}, 수질 ${Math.round(RT.waterQ === undefined ? 100 : RT.waterQ)}점. ${S.garbageStock > 100 ? '거리에 쓰레기가 쌓이고 있다.' : '쓰레기 수거는 원활하다.'}</p></div>
+   <div><h3>날씨</h3><p style="margin:4px 0;line-height:1.5">${wx}</p></div>
+  </div>
+  <h3>사설</h3><p style="margin:4px 0;line-height:1.5;font-style:italic">"${ed}" (시장 지지율 ${Math.round(S.approval)}%)</p>
+  <h3>이웃 소식</h3><p style="margin:4px 0;line-height:1.5">${S.nb.map(n => `${n.name} 인구 ${fmt(n.pop)}`).join(' · ')}</p>
+  <h3>지난 기사</h3><div style="max-height:150px;overflow:auto;font-size:12px">${S.news.slice(0, 20).map(n => `<div class="kv"><span>${n.date}</span><span style="text-align:right;flex:1;margin-left:8px">${n.text}</span></div>`).join('')}</div>`;
+}
+$('bPaper').onclick = () => { openModal('paper', '📰 신문'); renderPaper(); };
+
+// 사업 제안·시민 청원 팝업
+function showPopup() {
+  const p = popups.shift(); if (!p) return;
+  if (p.type === 'offer') {
+    const b = BLD[p.key]; const inc = b.inc[0] + RT.pop * b.inc[1];
+    const cons = { toxic: '주변 지가가 크게 떨어지고 대기·수질이 오염됩니다.', maxprison: '주변 지가가 떨어지지만 수감 공간이 크게 늘어납니다.', missile: '주변 지가가 떨어지고 시민들이 불안해합니다.', resort: '상업이 살아나지만 주변 범죄가 늘어납니다.' }[p.key];
+    openModal('offer', '💼 사업 제안', `<p style="line-height:1.6">한 기업이 우리 시에 <b>${b.n}</b>을(를) 짓고 싶다고 제안했습니다.</p>
+      <div class="kv"><span>예상 수입</span><b class="pos">월 약 ₩${fmt(inc)}</b></div><div class="kv"><span>부작용</span><span>${cons}</span></div><div class="kv"><span>지지율</span><span class="negc">${b.ap}%p</span></div>
+      <p style="color:var(--muted);font-size:12px">수락하면 특수 메뉴에서 원하는 곳에 무료로 지을 수 있습니다.</p>
+      <div class="row"><button class="btn" id="pYes">수락</button><button class="btn sec" id="pNo">거절</button></div>`);
+    const no = () => { S.offer = null; S.bizCd[p.key] = 48; S.approval = Math.min(100, S.approval + 1); news(`「${b.n}」 유치 제안을 거절했습니다.`, 'info'); };
+    modalOnClose = no;
+    $('pYes').onclick = () => { modalOnClose = null; S.offer = null; S.biz[p.key] = 'ok'; news(`💼 「${b.n}」 유치 계약을 맺었습니다. 특수 메뉴에서 지으세요.`, 'good'); buildToolbar(); closeModal(); };
+    $('pNo').onclick = () => closeModal();
+  } else {
+    const pt = PETS.find(x => x.k === p.key);
+    if (!pt || !pt.c()) return;
+    openModal('pet', '📢 시민 청원', `<p style="line-height:1.6;font-size:15px">"${pt.t}"</p><div class="kv"><span>서명</span><b>${fmt(p.n)}명</b></div>
+      <p style="color:var(--muted);font-size:12px">받아들이면 지지율이 오르고, 거절하면 조금 떨어집니다.</p>
+      <div class="row"><button class="btn" id="pYes">받아들이기</button><button class="btn sec" id="pNo">거절</button></div>`);
+    modalOnClose = () => { S.approval = Math.max(0, S.approval - 2); news('시민 청원을 거절했습니다.', 'info'); };
+    $('pYes').onclick = () => { modalOnClose = null; pt.a(); S.approval = Math.min(100, S.approval + 4); news('📢 시민 청원을 받아들였습니다.', 'good'); computeCoverage(); closeModal(); refreshUI(); };
+    $('pNo').onclick = () => closeModal();
+  }
+}
+
 // 지도 보기
 function buildOverlays() {
   const l = $('ovList'); l.innerHTML = '';
@@ -1531,7 +2106,7 @@ function setOverlay(k) {
   overlay = k; const n = OVERLAYS.find(o => o[0] === k)[1]; $('ovBtn').textContent = '🗺️ 지도: ' + n; buildOverlays();
   const lg = $('legend');
   if (k === 'none') lg.classList.add('hidden');
-  else { lg.classList.remove('hidden'); lg.innerHTML = ({ lv: '지가: 초록=높음 · 빨강=낮음', pol: '오염도', crime: '범죄율', traffic: '도로 혼잡도', power: '노랑=전기 있음 · 빨강=없음', water: '파랑=급수 · 빨강=없음', police: '파랑이 진할수록 강함', fire: '파랑이 진할수록 강함', health: '파랑이 진할수록 강함', edu: '파랑이 진할수록 강함' })[k] + (['pol', 'crime', 'traffic'].includes(k) ? '<div class="grad"></div><small>낮음 → 높음</small>' : k === 'lv' ? '<div class="grad" style="transform:scaleX(-1)"></div>' : ''); }
+  else { lg.classList.remove('hidden'); lg.innerHTML = ({ lv: '지가: 초록=높음 · 빨강=낮음', wpol: '수질 오염 (강·호수·지하수)', height: '높이: 초록=낮음 → 보라=높음', commute: '통근: 초록=일자리 연결됨 · 빨강=도로망에 일자리 없음', pol: '오염도', crime: '범죄율', traffic: '도로 혼잡도', power: '노랑=전기 있음 · 빨강=없음', water: '파랑=급수 · 빨강=없음', police: '파랑이 진할수록 강함', fire: '파랑이 진할수록 강함', health: '파랑이 진할수록 강함', edu: '파랑이 진할수록 강함' })[k] + (['pol', 'crime', 'traffic'].includes(k) ? '<div class="grad"></div><small>낮음 → 높음</small>' : k === 'lv' ? '<div class="grad" style="transform:scaleX(-1)"></div>' : ''); }
 }
 $('ovBtn').onclick = () => { $('ovList').classList.toggle('hidden'); buildOverlays(); };
 
@@ -1543,6 +2118,7 @@ $('bMenu').onclick = () => {
   <h3>설정</h3>
   <label class="ord"><input type="checkbox" id="mDis" ${S.disasters ? 'checked' : ''}><div><b>무작위 재해</b><small>화재·지진·토네이도가 가끔 발생합니다</small></div></label>
   <label class="ord"><input type="checkbox" id="mSnd" ${soundOn ? 'checked' : ''}><div><b>효과음</b></div></label>
+  <label class="ord"><input type="checkbox" id="mDay" ${dayNight ? 'checked' : ''}><div><b>낮과 밤</b><small>시간이 흐르면 밤이 되고 불빛이 켜집니다</small></div></label>
   <div class="row"><label>도시 이름</label><input type="text" id="mName" value="${S.name.replace(/"/g, '&quot;')}"></div>
   <h3>도움말</h3>
   <div class="help">
@@ -1559,20 +2135,24 @@ $('bMenu').onclick = () => {
   $('mNew').onclick = () => showNewGame();
   $('mDis').onchange = e => S.disasters = e.target.checked;
   $('mSnd').onchange = e => soundOn = e.target.checked;
+  $('mDay').onchange = e => dayNight = e.target.checked;
   $('mName').onchange = e => { S.name = e.target.value || '새 도시'; refreshUI(); };
   $('mExport').onclick = () => { const blob = new Blob([serialize()], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (S.name || 'city') + '.json'; a.click(); };
   $('mImport').onchange = e => { const f = e.target.files[0]; if (!f) return; f.text().then(txt => { if (deserialize(txt)) { news('📂 파일에서 도시를 불러왔습니다.', 'good'); closeModal(); } else alert('파일을 읽을 수 없습니다.'); }); };
 };
 
 /* ---------------- 저장 ---------------- */
-const TKEYS = ['ter', 'tree', 'k', 'z', 'd', 'lvl', 'occ', 'hi', 'ab', 'b', 'o', 'pl', 'burn', 'rub', 'v', 'age', 'np'];
+const TKEYS = ['ter', 'tree', 'k', 'z', 'd', 'lvl', 'occ', 'hi', 'ab', 'b', 'o', 'pl', 'burn', 'rub', 'v', 'age', 'np', 'h', 'sec', 'rl'];
 function serialize() { const o = Object.assign({}, S); o.tiles = T.map(t => TKEYS.map(k => t[k])); return JSON.stringify(o); }
 function deserialize(txt) {
   try {
     const o = JSON.parse(txt); if (!o || !o.tiles) return false;
     const w = o.W || 64; if (o.tiles.length !== w * w) return false;
     setSize(w); o.W = w; o.unlocked = o.unlocked || {};
-    o.tiles = o.tiles.map(a => { const t = newTile(); TKEYS.forEach((k, j) => t[k] = a[j]); return t; });
+    o.tiles = o.tiles.map(a => { const t = newTile(); TKEYS.forEach((k, j) => { if (a[j] !== undefined && a[j] !== null) t[k] = a[j]; }); if (t.ter === 1) t.h = 0; return t; });
+    o.nb = o.nb || NB_NAMES.map((n, k) => ({ name: n, side: k, pop: 50000 })); o.deals = o.deals || []; o.inmates = o.inmates || 0;
+    o.secTax = o.secTax || Object.fromEntries(SECKEYS.map(k => [k, 0])); o.biz = o.biz || {}; o.bizCd = o.bizCd || {}; o.petCd = o.petCd || {}; o.offer = null;
+    flood = null; floodSet = null; meteor = null; riots = []; popups.length = 0;
     S = o; T = S.tiles; tornado = null; calcWaterProx();
     for (let i = 0; i < N; i++) M.lv[i] = 50 + M.waterProx[i] * 40;
     for (let k = 0; k < 3; k++) monthly(true);
@@ -1592,6 +2172,7 @@ function showNewGame() {
    <div class="row"><label>도시 이름</label><input type="text" id="ngName" value="푸른시"></div>
    <div class="row"><label>지도 번호</label><input type="text" id="ngSeed" value="${(Math.random() * 99999) | 0}" style="width:110px;flex:0 0 auto"><button class="btn sec" id="ngRand">🎲</button></div>
    <div class="row"><label>물</label><select id="ngWater"><option value="0">없음</option><option value="1">적음</option><option value="2" selected>보통</option><option value="3">많음</option></select></div>
+   <div class="row"><label>지형</label><select id="ngHills"><option value="0">평지</option><option value="1">구릉</option><option value="2" selected>언덕</option><option value="3">산악</option></select></div>
    <div class="row"><label>숲</label><select id="ngTrees"><option value="0">없음</option><option value="1">적음</option><option value="2" selected>보통</option><option value="3">많음</option></select></div>
    <div class="row"><label>지도 크기</label><select id="ngSize"><option value="64">작음 64×64</option><option value="96">보통 96×96</option><option value="128" selected>큼 128×128 (천만 도전)</option></select></div>
    <div class="row"><label>난이도</label><select id="ngDiff"><option value="50000">쉬움 (₩50,000)</option><option value="20000" selected>보통 (₩20,000)</option><option value="10000">어려움 (₩10,000)</option></select></div>
@@ -1601,7 +2182,7 @@ function showNewGame() {
   $('ngGo').onclick = () => {
     const seed = parseInt($('ngSeed').value, 10) || 1;
     modalOpen = null; $('modal').classList.add('hidden');
-    newGame({ size: +$('ngSize').value, name: $('ngName').value.trim() || '새 도시', seed, water: +$('ngWater').value, trees: +$('ngTrees').value, money: +$('ngDiff').value, disasters: $('ngDis').checked });
+    newGame({ size: +$('ngSize').value, name: $('ngName').value.trim() || '새 도시', seed, water: +$('ngWater').value, trees: +$('ngTrees').value, hills: +$('ngHills').value, money: +$('ngDiff').value, disasters: $('ngDis').checked });
     buildToolbar(); selectTool('inspect'); setSpeed(2);
   };
   if (hasSave) $('ngCont').onclick = () => { modalOpen = null; $('modal').classList.add('hidden'); if (!(load('metro_save') || load('metro_autosave'))) showNewGame(); };
@@ -1611,7 +2192,9 @@ function showNewGame() {
 let last = performance.now(), miniT = 0;
 function loop(now) {
   const dt = Math.min((now - last) / 1000, 0.25); last = now;
-  if (S) { tick(dt); panKeys(dt); }
+  if (S) { tick(dt); panKeys(dt); if (speed && !modalOpen) tod = (tod + dt / 180) % 1; }
+  nightK = dayNight && S ? clamp(-Math.cos(tod * Math.PI * 2) * 0.8 - 0.15, 0, 0.6) : 0;   // tod 0 = 정오, 0.5 = 자정
+  if (S && !modalOpen && popups.length) showPopup();
   render(now);
   miniT += dt; if (S && (miniT > 0.5 || miniDirty)) { drawMini(); miniT = 0; miniDirty = false; }
   requestAnimationFrame(loop);
@@ -1622,4 +2205,4 @@ buildToolbar();
 setOverlay('none');
 showNewGame();
 requestAnimationFrame(loop);
-window.__game = { get S() { return S; }, RT, M, computePower, conducts, applyTool, monthly, lineTiles, rectTiles, newGame, setSpeed, idx, T: () => T, selectTool, placeOrigin, save, load, serialize, deserialize };
+window.__game = { get S() { return S; }, RT, M, computePower, conducts, canPlace: canPlaceBld, forcePopup: (type, key) => popups.push({ type, key, n: 123 }), clearPopups: () => { popups.length = 0; if (modalOpen) { modalOnClose = null; closeModal(); } }, setTod: v => { tod = v; }, refresh: () => refreshUI(), applyTool, monthly, lineTiles, rectTiles, newGame, setSpeed, idx, T: () => T, selectTool, placeOrigin, save, load, serialize, deserialize };
