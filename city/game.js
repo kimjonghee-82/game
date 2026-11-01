@@ -14,7 +14,7 @@ const fmt = n => Math.round(n).toLocaleString('ko-KR');
 /* ---------------- 정의 ---------------- */
 const OCC = { R: [0, 6, 16, 40, 90, 180, 320], C: [0, 4, 10, 26, 55, 110, 200], I: [0, 8, 16, 32, 60, 110, 180] };
 const MAXLV = [0, 2, 4, 6];
-const LVGATE = [0, 0, 0, 50, 75, 105, 135];
+const LVGATE = [0, 0, 0, 45, 70, 100, 130];
 const ZCOL = { R: '#4caf50', C: '#2196f3', I: '#ffc107' };
 const ZNAME = { R: '주거', C: '상업', I: '공업' };
 const DNAME = ['', '저밀도', '중밀도', '고밀도'];
@@ -32,11 +32,11 @@ const BLD = {
   bus:      { n: '버스정류장', sz: 1, cost: 120, mt: 4, dept: 'trans', bus: 7, flat: 'bus', d: '주변 교통량 35% 감소' },
   coal:     { n: '석탄발전소', sz: 2, cost: 4000, mt: 30, dept: 'power', mw: 400, pol: 70, life: 50, col: '#6d4c41', h: 24, chim: 2, d: '400MW · 오염 심함' },
   gas:      { n: '가스발전소', sz: 2, cost: 6000, mt: 40, dept: 'power', mw: 260, pol: 25, life: 50, col: '#90a4ae', h: 22, ico: '🔥', d: '260MW · 오염 보통' },
-  nuke:     { n: '원자력발전소', sz: 3, cost: 16000, mt: 90, dept: 'power', mw: 1400, pol: 4, life: 50, col: '#cfd8dc', h: 30, nuke: 1, d: '1400MW · 노후 시 사고 위험' },
+  nuke:     { n: '원자력발전소', sz: 3, cost: 16000, mt: 70, dept: 'power', mw: 1400, pol: 4, life: 50, col: '#cfd8dc', h: 30, nuke: 1, d: '1400MW · 노후 시 사고 위험' },
   wind:     { n: '풍력발전기', sz: 1, cost: 250, mt: 2, dept: 'power', mw: 18, pol: 0, life: 40, wind: 1, d: '18MW · 친환경' },
   solar:    { n: '태양광발전소', sz: 2, cost: 1500, mt: 8, dept: 'power', mw: 70, pol: 0, life: 40, solar: 1, d: '70MW · 친환경' },
-  pump:     { n: '양수장', sz: 1, cost: 400, mt: 8, dept: 'water', wcap: 120, wcapW: 450, use: 4, col: '#5dade2', h: 12, ico: '💧', d: '물가에 지으면 450, 내륙 120 · 도로와 연결' },
-  tower:    { n: '급수탑', sz: 1, cost: 250, mt: 5, dept: 'water', wcap: 160, use: 1, wtower: 1, d: '급수 160 · 도로와 연결' },
+  pump:     { n: '양수장', sz: 1, cost: 400, mt: 8, dept: 'water', wcap: 250, wcapW: 700, use: 4, col: '#5dade2', h: 12, ico: '💧', d: '물가에 지으면 700, 내륙 250 · 도로와 연결' },
+  tower:    { n: '급수탑', sz: 1, cost: 250, mt: 5, dept: 'water', wcap: 300, use: 1, wtower: 1, d: '급수 300 · 도로와 연결' },
   landfill: { n: '매립지', sz: 2, cost: 300, mt: 6, dept: 'waste', fill: 30000, pol: 18, flat: 'landfill', d: '쓰레기 30,000t 매립' },
   incin:    { n: '소각장', sz: 2, cost: 3000, mt: 30, dept: 'waste', burn: 500, mw: 40, pol: 35, col: '#795548', h: 22, chim: 1, ico: '♨️', d: '월 500t 소각 · 40MW 발전' },
   recycle:  { n: '재활용센터', sz: 1, cost: 800, mt: 15, dept: 'waste', recyc: 1, use: 2, col: '#27ae60', h: 14, ico: '♻️', d: '쓰레기 발생 15% 감소(최대 45%)' },
@@ -259,7 +259,7 @@ function plantMW(t) {
 function computePower() {
   for (let i = 0; i < N; i++) T[i].pw = 0;
   const comp = new Int32Array(N).fill(-1);
-  let cap = 0, use = 0, cid = 0;
+  let cap = 0, use = 0, cid = 0, short = 0, isolated = 0;
   const plants = []; eachBld((i, t, b) => { if (b.mw) plants.push(i); });
   for (const p of plants) {
     if (comp[p] >= 0) continue;
@@ -274,19 +274,21 @@ function computePower() {
         if (comp[j] < 0 && conducts(T[j]) && !T[j].burn) { comp[j] = cid; q.push(j); }
       }
     }
+    let consumers = 0; for (const i of order) if (!(T[i].k === 'bld' && BLD[T[T[i].o].b].mw)) consumers++;
+    if (!consumers) { isolated++; cid++; continue; }
     cap += capacity; let remain = capacity;
     // 발전소 타일은 항상 전력 공급
     for (const i of order) { const t = T[i]; if (t.k === 'bld' && BLD[t.b].mw) t.pw = 1; }
     for (const i of order) {
       const t = T[i]; if (t.pw) continue;
       const u = powerUse(t, i); use += u;
-      if (u <= remain) { remain -= u; t.pw = 1; }
+      if (u <= remain) { remain -= u; t.pw = 1; } else if (u > 0) short++;
     }
     cid++;
   }
   // 다중 타일 건물: 원점 전력 상태를 전체에 반영
   eachBld((i, t) => { const p = t.pw; for (const j of footprint(i)) T[j].pw = p; });
-  RT.powerCap = cap; RT.powerUse = use;
+  RT.powerCap = cap; RT.powerUse = use; RT.powerShort = short; RT.plantIsolated = isolated;
 }
 function computeWater() {
   for (let i = 0; i < N; i++) T[i].wt = 0;
@@ -406,9 +408,9 @@ function computeLandValue() {
   }
   const beauty = S.ord.beauty ? 10 : 0;
   for (let i = 0; i < N; i++) {
-    const v = 45 + M.waterProx[i] * 45 + Math.min(M.trees[i], 8) * 3 + M.park[i] * 0.6 + M.bonus[i]
-      + (M.police[i] + M.health[i]) * 0.08 + Math.min(M.edu[i], 100) * 0.1 + beauty
-      - M.pol[i] * 0.8 - M.crime[i] * 0.45 - M.noise[i] * 12;
+    const v = 60 + M.waterProx[i] * 40 + Math.min(M.trees[i], 8) * 3 + M.park[i] * 0.6 + M.bonus[i]
+      + (M.police[i] + M.health[i]) * 0.1 + Math.min(M.edu[i], 100) * 0.12 + beauty
+      - M.pol[i] * 0.6 - M.crime[i] * 0.35 - M.noise[i] * 8;
     M.lv[i] = M.lv[i] * 0.5 + clamp(v, 0, 250) * 0.5;
   }
 }
@@ -431,7 +433,7 @@ function computeDemand() {
   let cD = (cT - cj) / Math.max(40, cT) - (S.tax.C - 9) * 0.06 - RT.avgCong * 0.1;
   const iT = pop * 0.28 * (port ? 1.25 : 1) + 50 + (port ? 80 : 0);
   let iD = (iT - ij) / Math.max(50, iT) - (S.tax.I - 9) * 0.06 - (S.ord.antipol ? 0.1 : 0);
-  if (RT.powerUse > RT.powerCap * 1.02 && RT.powerCap > 0) { rD -= 0.1; cD -= 0.1; iD -= 0.15; }
+  if (RT.powerShort > 20) { rD -= 0.1; cD -= 0.1; iD -= 0.15; }
   S.demand.R = S.demand.R * 0.6 + clamp(rD, -1, 1) * 0.4;
   S.demand.C = S.demand.C * 0.6 + clamp(cD, -1, 1) * 0.4;
   S.demand.I = S.demand.I * 0.6 + clamp(iD, -1, 1) * 0.4;
@@ -451,7 +453,7 @@ function growZones() {
     if (t.lvl > 0 && (t.np >= 4 || !road)) { if (!t.ab && rnd() < 0.3) { t.ab = 1; t.occ = 0; } continue; }
     if (!road || !t.pw) continue;
     const D = S.demand[t.z], s = desirability(i, t), g = D * 0.65 + s * 0.35;
-    if (t.ab) { if (g > 0.05 && rnd() < 0.15) { t.ab = 0; t.occ = OCC[t.z][t.lvl]; } continue; }
+    if (t.ab) { if (g > -0.15 && rnd() < 0.12) { t.ab = 0; t.lvl = Math.max(1, t.lvl - 1); t.occ = OCC[t.z][t.lvl]; } continue; }
     let cap = MAXLV[t.d]; if (!t.wt) cap = Math.min(cap, 2);
     if (g > 0 && t.lvl < cap && rnd() < g * 0.3) {
       const nl = t.lvl + 1;
@@ -463,7 +465,8 @@ function growZones() {
         if (t.z === 'I') t.hi = rnd() < (S.eq - 55) / 70 ? 1 : 0;
       }
     } else if (g < -0.25 && t.lvl > 0 && rnd() < -g * 0.12) {
-      if (g < -0.6 && rnd() < 0.3) { t.ab = 1; t.occ = 0; }
+      const slum = M.crime[i] > 60 || M.pol[i] > 75 || (t.z === 'R' && M.lv[i] < 12);
+      if (slum && rnd() < 0.3) { t.ab = 1; t.occ = 0; }
       else { t.lvl--; t.occ = OCC[t.z][t.lvl]; }
     } else if (t.lvl > 0) t.occ = OCC[t.z][t.lvl];
   }
@@ -487,9 +490,9 @@ function processGarbage() {
 }
 function budgetMonth(apply) {
   const b = { inc: {}, exp: {} };
-  b.inc['주거세'] = RT.pop * S.tax.R * 0.0065;
-  b.inc['상업세'] = RT.cJobs * S.tax.C * 0.009;
-  b.inc['공업세'] = RT.iJobs * S.tax.I * 0.009;
+  b.inc['주거세'] = RT.pop * S.tax.R * 0.011;
+  b.inc['상업세'] = RT.cJobs * S.tax.C * 0.014;
+  b.inc['공업세'] = RT.iJobs * S.tax.I * 0.014;
   const dexp = { trans: 0, police: 0, fire: 0, health: 0, edu: 0, rec: 0, power: 0, water: 0, waste: 0, special: 0 };
   let roads = 0; for (let i = 0; i < N; i++) { const t = T[i]; if (t.k === 'road') roads += T[i].ter ? 0.4 : 0.1; else if (t.k === 'avenue') roads += 0.25; else if (t.k === 'power') roads += 0.02; }
   dexp.trans += roads;
@@ -527,7 +530,7 @@ function updateCityStats() {
   const avgTax = (S.tax.R + S.tax.C + S.tax.I) / 3;
   let ap = 78 - (avgTax - 9) * 4 - RT.avgCrime * 0.35 - RT.avgPol * 0.25 - RT.unemp * 60 - Math.max(0, RT.avgCong - 0.6) * 20
     - Math.min(S.garbageStock / 300, 20) + (S.eq - 50) * 0.1 + (S.life - 65) * 0.2 + (hasBld('cityhall') ? 5 : 0);
-  if (RT.powerUse > RT.powerCap * 1.02) ap -= 10;
+  if (RT.powerShort > 0) ap -= Math.min(10, RT.powerShort / 5);
   if (RT.pop > 200 && RT.waterUse < RT.pop * 0.005) ap -= 5;
   S.approval += (clamp(ap, 0, 100) - S.approval) * 0.15;
 }
@@ -554,6 +557,8 @@ function advise() {
   if (!anyPlant && anyZone) { if (say('noplant', '전력 고문: 구역에 전기가 없습니다. 발전소를 짓고 송전선으로 연결하세요.', 'warn', 4)) return; }
   let unp = 0; for (let i = 0; i < N; i++) if (T[i].k === 'zone' && !T[i].pw) unp++;
   if (anyPlant && unp >= 4) { if (say('unpow', `전력 고문: 전기가 닿지 않는 구역이 ${unp}칸 있습니다. 도로는 전기를 전달하지 않으니 송전선을 도로 위로 건너 연결하세요.`, 'warn', 8)) return; }
+  if (RT.plantIsolated) { if (say('isol', `전력 고문: 전력망에 연결되지 않은 발전소가 ${RT.plantIsolated}곳 있습니다. 송전선으로 도시와 이어 주세요.`, 'warn', 6)) return; }
+  if (RT.powerShort > 0) { if (say('short', `전력 고문: 전력이 모자라 ${RT.powerShort}칸이 정전 상태입니다. 발전소를 추가하거나 송전망을 연결하세요.`, 'bad', 6)) return; }
   if (RT.powerCap > 0 && RT.powerUse > RT.powerCap) { if (say('power', `전력 고문: 전력 부족! 수요 ${fmt(RT.powerUse)}MW / 공급 ${fmt(RT.powerCap)}MW. 발전소를 추가하세요.`, 'bad', 6)) return; }
   if (S.money < 0) { if (say('money', '재정 고문: 시 재정이 적자입니다! 세금을 올리거나 지출을 줄이거나 대출을 받으세요.', 'bad', 4)) return; }
   if (RT.pop > 300 && RT.waterCap === 0) { if (say('water', '수도 고문: 상수도가 없어 건물이 2단계 이상 성장하지 못합니다. 양수장을 도로 옆에 지으세요.', 'warn', 10)) return; }
@@ -1468,7 +1473,7 @@ function renderStats() {
    ${kv('인구', fmt(RT.pop))}${kv('일자리 (상업/공업)', fmt(RT.cJobs) + ' / ' + fmt(RT.iJobs))}
    ${kv('실업률', Math.round(RT.unemp * 100) + '%')}${kv('지지율', Math.round(S.approval) + '%')}
    ${kv('교육 수준(EQ)', Math.round(S.eq))}${kv('기대수명', Math.round(S.life) + '세')}
-   ${kv('전력', fmt(RT.powerUse) + ' / ' + fmt(RT.powerCap) + ' MW')}${kv('수도', fmt(RT.waterUse) + ' / ' + fmt(RT.waterCap))}
+   ${kv('전력', fmt(RT.powerUse) + ' / ' + fmt(RT.powerCap) + ' MW' + (RT.powerShort ? ` (정전 ${RT.powerShort}칸)` : ''))}${kv('수도', fmt(RT.waterUse) + ' / ' + fmt(RT.waterCap))}
    ${kv('쓰레기 (월)', fmt(RT.garbage) + 't · 처리 ' + fmt(RT.garbageDone) + 't')}${kv('미수거 쓰레기', fmt(S.garbageStock) + 't')}
    ${kv('평균 범죄', Math.round(RT.avgCrime))}${kv('평균 오염', Math.round(RT.avgPol))}
    ${kv('교통 혼잡', Math.round(RT.avgCong * 100) + '%')}${kv('매립지 잔여', fmt(RT.landfillLeft || 0) + 't')}
@@ -1580,4 +1585,4 @@ buildToolbar();
 setOverlay('none');
 showNewGame();
 requestAnimationFrame(loop);
-window.__game = { get S() { return S; }, RT, M, applyTool, monthly, lineTiles, rectTiles, newGame, setSpeed, idx, T: () => T, selectTool, placeOrigin, save, load, serialize, deserialize };
+window.__game = { get S() { return S; }, RT, M, computePower, conducts, applyTool, monthly, lineTiles, rectTiles, newGame, setSpeed, idx, T: () => T, selectTool, placeOrigin, save, load, serialize, deserialize };
