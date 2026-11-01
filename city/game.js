@@ -2,7 +2,7 @@
 /* =========================================================================
    메트로 플래너 — 독창적인 도시 건설 시뮬레이션
    ========================================================================= */
-const W = 64, H = 64, N = W * H;
+let W = 64, H = 64, N = W * H;
 const TW = 64, TH = 32;
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -12,9 +12,13 @@ const inb = (x, y) => x >= 0 && y >= 0 && x < W && y < H;
 const fmt = n => Math.round(n).toLocaleString('ko-KR');
 
 /* ---------------- 정의 ---------------- */
-const OCC = { R: [0, 6, 16, 40, 90, 180, 320], C: [0, 4, 10, 26, 55, 110, 200], I: [0, 8, 16, 32, 60, 110, 180] };
-const MAXLV = [0, 2, 4, 6];
-const LVGATE = [0, 0, 0, 45, 70, 100, 130];
+const OCC = { R: [0, 6, 16, 40, 90, 180, 320, 700, 1500], C: [0, 4, 10, 26, 55, 110, 200, 700, 2000], I: [0, 8, 16, 32, 60, 110, 180, 500, 1200] };
+const MAXLV = [0, 2, 4, 8];
+const LVGATE = [0, 0, 0, 45, 70, 100, 130, 150, 172];
+const IEQ = { 5: 55, 6: 75, 7: 90, 8: 105 };   // 공업 고단계 교육 요건
+const CEQ = { 7: 70, 8: 90 };                  // 상업 초고층 교육 요건
+const RANKS = [[0, '마을'], [2000, '소도시'], [10000, '도시'], [50000, '대도시'], [250000, '광역시'], [1000000, '메트로폴리스'], [5000000, '메갈로폴리스'], [10000000, '세계 도시']];
+function cityRank(p) { let r = RANKS[0][1]; for (const [n, name] of RANKS) if (p >= n) r = name; return r; }
 const ZCOL = { R: '#4caf50', C: '#2196f3', I: '#ffc107' };
 const ZNAME = { R: '주거', C: '상업', I: '공업' };
 const DNAME = ['', '저밀도', '중밀도', '고밀도'];
@@ -46,6 +50,11 @@ const BLD = {
   cityhall: { n: '시청', sz: 2, cost: 0, mt: 10, dept: 'special', reward: 10000, lvb: 30, lr: 10, col: '#f2f2f2', h: 30, ico: '🏛️', d: '보상: 인구 10,000 · 지지율 상승' },
   statue:   { n: '기념 동상', sz: 1, cost: 0, mt: 0, dept: 'special', reward: 20000, lvb: 25, lr: 7, col: '#b0bec5', h: 22, ico: '🗿', d: '보상: 인구 20,000' },
   stadium:  { n: '경기장', sz: 3, cost: 0, mt: 20, dept: 'special', reward: 40000, lvb: 15, lr: 10, col: '#9e9e9e', h: 16, ico: '🏟️', d: '보상: 인구 40,000 · 상업 수요 증가' },
+  subway:   { n: '지하철역', sz: 1, cost: 1500, mt: 25, dept: 'trans', metro: 10, use: 2, col: '#455a64', h: 10, ico: '🚇', unlock: 10000, d: '반경 10칸 교통량 60% 감소' },
+  bigwater: { n: '대형 정수장', sz: 3, cost: 30000, mt: 150, dept: 'water', wcap: 12000, use: 60, col: '#0288d1', h: 16, ico: '🌊', unlock: 100000, d: '급수 12,000 · 도로와 연결' },
+  bigwaste: { n: '자원순환센터', sz: 3, cost: 40000, mt: 200, dept: 'waste', burn: 30000, mw: 500, pol: 15, life: 80, col: '#558b2f', h: 24, chim: 1, ico: '♻️', unlock: 100000, d: '월 30,000t 처리 · 500MW 발전' },
+  fusion:   { n: '핵융합발전소', sz: 3, cost: 120000, mt: 500, dept: 'power', mw: 15000, pol: 2, life: 80, col: '#7e57c2', h: 34, ico: '⚛️', unlock: 250000, d: '15,000MW · 청정 에너지' },
+  arcology: { n: '메가 아콜로지', sz: 3, cost: 1500000, mt: 600, dept: 'special', arc: 60000, use: 600, wuse: 500, trips: 300, lvb: 20, lr: 8, col: '#9fa8da', h: 190, ico: '🏙️', unlock: 300000, d: '주민 60,000명 수용 · 전기 600MW, 물 500 필요' },
   landmark: { n: '랜드마크 타워', sz: 2, cost: 0, mt: 30, dept: 'special', reward: 80000, lvb: 50, lr: 14, col: '#b3e5fc', h: 110, ico: '🗼', d: '보상: 인구 80,000' },
 };
 
@@ -78,14 +87,14 @@ TOOLS.tower.ico = '🚰';
 
 const CATS = [
   { ico: '🔍', n: '기본', tools: ['inspect', 'bulldoze', 'tree'] },
-  { ico: '🛣️', n: '교통', tools: ['road', 'avenue', 'bus'] },
+  { ico: '🛣️', n: '교통', tools: ['road', 'avenue', 'bus', 'subway'] },
   { ico: '🏘️', n: '구역', tools: ['R1', 'R2', 'R3', 'C1', 'C2', 'C3', 'I1', 'I2', 'I3', 'dezone'] },
-  { ico: '⚡', n: '전력', tools: ['powerline', 'coal', 'gas', 'nuke', 'wind', 'solar'] },
-  { ico: '💧', n: '수도', tools: ['pump', 'tower'] },
+  { ico: '⚡', n: '전력', tools: ['powerline', 'coal', 'gas', 'nuke', 'wind', 'solar', 'fusion'] },
+  { ico: '💧', n: '수도', tools: ['pump', 'tower', 'bigwater'] },
   { ico: '🏛️', n: '공공', tools: ['police', 'fire', 'hospital', 'school', 'univ', 'library'] },
   { ico: '🌳', n: '여가', tools: ['park', 'bigpark', 'plaza'] },
-  { ico: '🗑️', n: '쓰레기', tools: ['landfill', 'incin', 'recycle'] },
-  { ico: '⭐', n: '특수', tools: ['port', 'airport', 'mansion', 'cityhall', 'statue', 'stadium', 'landmark'] },
+  { ico: '🗑️', n: '쓰레기', tools: ['landfill', 'incin', 'recycle', 'bigwaste'] },
+  { ico: '⭐', n: '특수', tools: ['arcology', 'port', 'airport', 'mansion', 'cityhall', 'statue', 'stadium', 'landmark'] },
   { ico: '🌪️', n: '재해', tools: ['d_fire', 'd_quake', 'd_tornado'] },
 ];
 
@@ -111,12 +120,10 @@ const OVERLAYS = [
 /* ---------------- 상태 ---------------- */
 let S = null;    // 저장되는 게임 상태
 let T = null;    // 타일 배열 (S.tiles)
-const M = {      // 매달 다시 계산하는 지도
-  lv: new Float32Array(N), pol: new Float32Array(N), crime: new Float32Array(N), traffic: new Float32Array(N),
-  cong: new Float32Array(N), noise: new Float32Array(N), police: new Float32Array(N), fire: new Float32Array(N),
-  health: new Float32Array(N), edu: new Float32Array(N), park: new Float32Array(N), bus: new Float32Array(N),
-  bonus: new Float32Array(N), roadDist: new Uint8Array(N), waterProx: new Float32Array(N), trees: new Float32Array(N),
-};
+const M = {};      // 매달 다시 계산하는 지도
+const MAPKEYS = ['down', 'lv', 'pol', 'crime', 'traffic', 'cong', 'noise', 'police', 'fire', 'health', 'edu', 'park', 'bus', 'metro', 'bonus', 'waterProx', 'trees'];
+function setSize(w) { W = H = w; N = W * H; for (const k of MAPKEYS) M[k] = new Float32Array(N); M.roadDist = new Uint8Array(N); }
+setSize(64);
 const RT = { pop: 0, cJobs: 0, iJobs: 0, unemp: 0, powerCap: 0, powerUse: 0, waterCap: 0, waterUse: 0, garbage: 0, garbageDone: 0, avgCong: 0, avgPol: 0, avgCrime: 0, budget: null };
 let tornado = null;
 let speed = 2;
@@ -163,7 +170,7 @@ function genMap(seed, waterAmt, treeAmt) {
   const tthr = [1, 0.62, 0.52, 0.44][treeAmt];
   for (let i = 0; i < N; i++) if (tiles[i].ter === 0 && (tn[i] > tthr || r() < 0.02 * treeAmt)) tiles[i].tree = 1;
   // 중앙부는 비워 둔다
-  for (let y = 26; y < 38; y++) for (let x = 26; x < 38; x++) { const t = tiles[idx(x, y)]; if (t.ter === 1 && waterAmt < 3) t.ter = 0; }
+  for (let y = (H >> 1) - 6; y < (H >> 1) + 6; y++) for (let x = (W >> 1) - 6; x < (W >> 1) + 6; x++) { const t = tiles[idx(x, y)]; if (t.ter === 1 && waterAmt < 3) t.ter = 0; }
   return tiles;
 }
 function calcWaterProx() {
@@ -178,8 +185,9 @@ function calcWaterProx() {
 }
 
 function newGame(opts) {
+  setSize(opts.size || 128);
   S = {
-    ver: 1, name: opts.name || '새 도시', seed: opts.seed, year: 2000, month: 0, day: 0,
+    ver: 2, W, unlocked: {}, name: opts.name || '새 도시', seed: opts.seed, year: 2000, month: 0, day: 0,
     money: opts.money, tiles: genMap(opts.seed, opts.water, opts.trees),
     tax: { R: 9, C: 9, I: 9 }, fund: { trans: 100, police: 100, fire: 100, health: 100, edu: 100, rec: 100 },
     ord: {}, loans: [], demand: { R: 0.6, C: 0.2, I: 0.6 }, eq: 40, life: 65, approval: 70,
@@ -317,10 +325,11 @@ function computeWater() {
   for (let i = 0; i < N; i++) {
     const t = T[i];
     let u = 0;
-    if (t.k === 'zone') u = t.lvl > 0 && !t.ab ? t.lvl : 0.0001; else if (t.k === 'bld' && t.o === i && !BLD[t.b].wcap && !BLD[t.b].flat) u = 1; else continue;
-    if (M.roadDist[i] > 2) continue;
+    if (t.k === 'zone') u = t.lvl > 0 && !t.ab ? t.lvl : 0.0001; else if (t.k === 'bld' && t.o === i && !BLD[t.b].wcap && !BLD[t.b].flat) u = BLD[t.b].wuse || 1; else continue;
+    const sz = t.k === 'bld' ? BLD[t.b].sz : 1;
+    if (sz === 1 && M.roadDist[i] > 2) continue;
     const x = i % W, y = (i / W) | 0; let got = false;
-    for (let oy = -2; oy <= 2 && !got; oy++) for (let ox = -2; ox <= 2; ox++) {
+    for (let oy = -2; oy <= sz + 1 && !got; oy++) for (let ox = -2; ox <= sz + 1; ox++) {
       const nx = x + ox, ny = y + oy; if (!inb(nx, ny)) continue; const c = comp[idx(nx, ny)];
       if (c >= 0 && caps[c] >= u) { caps[c] -= u; used += u; t.wt = 1; got = true; break; }
     }
@@ -329,11 +338,12 @@ function computeWater() {
   RT.waterCap = total; RT.waterUse = used;
 }
 function computeCoverage() {
-  for (const k of ['police', 'fire', 'health', 'edu', 'park', 'bus', 'bonus']) M[k].fill(0);
+  for (const k of ['police', 'fire', 'health', 'edu', 'park', 'bus', 'metro', 'bonus']) M[k].fill(0);
   eachBld((i, t, b) => {
     const [cx, cy] = bldCenter(i);
     if (b.park) stamp(M.park, cx, cy, b.pr, b.park, 'add');
     if (b.bus) stamp(M.bus, cx, cy, b.bus, 100, 'max');
+    if (b.metro && t.pw) stamp(M.metro, cx, cy, b.metro, 100, 'max');
     if (b.lvb) stamp(M.bonus, cx, cy, b.lr, b.lvb, 'add');
     if (!b.r || !t.pw) return;
     const eff = Math.min(S.fund[b.dept] / 100, 1.25);
@@ -349,10 +359,10 @@ function computeTraffic() {
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = idx(x, y), t = T[i];
     let trips = 0;
-    if (t.k === 'zone' && t.lvl > 0 && !t.ab) trips = t.occ * (t.z === 'R' ? 0.35 : t.z === 'C' ? 0.5 : 0.4);
-    else if (t.k === 'bld' && t.o === i) trips = (BLD[t.b].use || 0) * 3;
+    if (t.k === 'zone' && t.lvl > 0 && !t.ab) trips = Math.pow(t.occ, 0.7) * (t.z === 'R' ? 0.6 : t.z === 'C' ? 0.8 : 0.6);
+    else if (t.k === 'bld' && t.o === i) { const b = BLD[t.b]; trips = b.trips !== undefined ? b.trips * Math.min(1, t.occ / (b.arc || 1) + 0.1) : (b.use || 0) * 2; }
     if (!trips) continue;
-    trips *= (1 - 0.35 * M.bus[i] / 100) * carF;
+    trips *= (1 - Math.max(0.35 * M.bus[i], 0.6 * M.metro[i]) / 100) * carF;
     const roads = [];
     for (let oy = -3; oy <= 3; oy++) for (let ox = -3; ox <= 3; ox++) { const nx = x + ox, ny = y + oy; if (inb(nx, ny) && isRoad(T[idx(nx, ny)])) roads.push(idx(nx, ny)); }
     if (!roads.length) continue;
@@ -361,7 +371,7 @@ function computeTraffic() {
   const capF = clamp(S.fund.trans / 100, 0.3, 1.1);
   let sum = 0, cnt = 0;
   M.cong.fill(0);
-  for (let i = 0; i < N; i++) { const t = T[i]; if (!isRoad(t)) continue; const cap = (t.k === 'avenue' ? 210 : 70) * capF; M.cong[i] = M.traffic[i] / cap; sum += Math.min(M.cong[i], 2); cnt++; }
+  for (let i = 0; i < N; i++) { const t = T[i]; if (!isRoad(t)) continue; const cap = (t.k === 'avenue' ? 140 : 40) * capF; M.cong[i] = M.traffic[i] / cap; sum += Math.min(M.cong[i], 2); cnt++; }
   RT.avgCong = cnt ? sum / cnt : 0;
   M.noise.fill(0);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -374,7 +384,7 @@ function computePollution() {
   const iF = S.ord.antipol ? 0.6 : 1;
   for (let i = 0; i < N; i++) {
     const t = T[i];
-    if (t.k === 'zone' && t.z === 'I' && t.lvl > 0 && !t.ab) p[i] += t.occ * (t.hi ? 0.12 : 0.55) * iF;
+    if (t.k === 'zone' && t.z === 'I' && t.lvl > 0 && !t.ab) p[i] += Math.sqrt(t.occ) * (t.hi ? 1 : 4.5) * iF;
     else if (t.k === 'bld') { const b = BLD[T[t.o].b]; if (b.pol) p[i] += b.pol; }
     if (isRoad(t)) p[i] += Math.min(M.cong[i], 2) * 18;
     if (t.tree) p[i] -= 10;
@@ -392,7 +402,7 @@ function computeCrime() {
   for (let i = 0; i < N; i++) {
     const t = T[i];
     if (t.k === 'zone' && t.lvl > 0) {
-      c[i] = 12 + t.occ * 0.14 + RT.unemp * 90 + extra - M.lv[i] * 0.08 + (t.ab ? 30 : 0);
+      c[i] = 12 + Math.sqrt(t.occ) * 1.3 + RT.unemp * 90 + extra - M.lv[i] * 0.08 + (t.ab ? 30 : 0);
     } else if (t.k === 'zone') c[i] = 5;
   }
   blur(c, 1, 0.6);
@@ -406,10 +416,14 @@ function computeLandValue() {
     let n = 0; for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) { const nx = x + ox, ny = y + oy; if (inb(nx, ny) && T[idx(nx, ny)].tree) n++; }
     M.trees[idx(x, y)] = n;
   }
+  // 도심 효과: 상업 일자리 밀집 지역 주변 지가 상승
+  const dn = M.down; dn.fill(0);
+  for (let i = 0; i < N; i++) { const t = T[i]; if (t.k === 'zone' && t.z === 'C' && !t.ab) dn[i] = t.occ; else if (t.k === 'bld' && BLD[T[t.o].b].arc) dn[i] = 150; }
+  blur(dn, 5, 0.3);
   const beauty = S.ord.beauty ? 10 : 0;
   for (let i = 0; i < N; i++) {
-    const v = 60 + M.waterProx[i] * 40 + Math.min(M.trees[i], 8) * 3 + M.park[i] * 0.6 + M.bonus[i]
-      + (M.police[i] + M.health[i]) * 0.1 + Math.min(M.edu[i], 100) * 0.12 + beauty
+    const v = 60 + M.waterProx[i] * 40 + Math.min(M.trees[i], 8) * 3 + M.park[i] * 0.8 + M.bonus[i]
+      + (M.police[i] + M.health[i]) * 0.1 + Math.min(M.edu[i], 100) * 0.12 + beauty + Math.min(50, Math.sqrt(dn[i]) * 4)
       - M.pol[i] * 0.6 - M.crime[i] * 0.35 - M.noise[i] * 8;
     M.lv[i] = M.lv[i] * 0.5 + clamp(v, 0, 250) * 0.5;
   }
@@ -420,6 +434,7 @@ function computeTotals() {
     const t = T[i]; if (t.k !== 'zone' || t.ab) continue;
     if (t.z === 'R') pop += t.occ; else if (t.z === 'C') cj += t.occ; else ij += t.occ;
   }
+  eachBld((i, t, b) => { if (b.arc) pop += t.occ; });
   RT.pop = pop; RT.cJobs = cj; RT.iJobs = ij;
   const wf = pop * 0.45; RT.unemp = wf > 50 ? clamp((wf - cj - ij) / wf, 0, 1) : 0;
 }
@@ -459,7 +474,9 @@ function growZones() {
       const nl = t.lvl + 1;
       let ok = true;
       if (t.z !== 'I' && M.lv[i] < LVGATE[nl]) ok = false;
-      if (t.z === 'I' && nl >= 5 && S.eq < (nl === 5 ? 55 : 75)) ok = false;
+      if (t.z === 'I' && IEQ[nl] && S.eq < IEQ[nl]) ok = false;
+      if (t.z === 'I' && nl >= 7 && !t.hi) ok = false;
+      if (t.z === 'C' && CEQ[nl] && S.eq < CEQ[nl]) ok = false;
       if (ok) {
         t.lvl = nl; t.occ = OCC[t.z][nl]; t.v = (rnd() * 4) | 0;
         if (t.z === 'I') t.hi = rnd() < (S.eq - 55) / 70 ? 1 : 0;
@@ -470,6 +487,16 @@ function growZones() {
       else { t.lvl--; t.occ = OCC[t.z][t.lvl]; }
     } else if (t.lvl > 0) t.occ = OCC[t.z][t.lvl];
   }
+}
+function growArcologies() {
+  eachBld((i, t, b) => {
+    if (!b.arc) return;
+    if (!t.pw || !t.wt) { t.occ = Math.max(0, t.occ - b.arc * 0.08); return; }
+    const D = S.demand.R;
+    if (D > 0) t.occ = Math.min(b.arc, t.occ + b.arc * 0.04 * (0.4 + D));
+    else if (D < -0.3) t.occ = Math.max(0, t.occ - b.arc * 0.02);
+    t.occ = Math.round(t.occ);
+  });
 }
 function processGarbage() {
   let recyc = 0, burnCap = 0;
@@ -536,6 +563,10 @@ function updateCityStats() {
 }
 function checkRewards() {
   for (const k in BLD) {
+    const b = BLD[k]; if (!b.unlock || S.unlocked[k]) continue;
+    if (RT.pop >= b.unlock) { S.unlocked[k] = 1; news(`🔓 새 시설 「${b.n}」을(를) 지을 수 있습니다!`, 'good'); buildToolbar(); }
+  }
+  for (const k in BLD) {
     const b = BLD[k]; if (!b.reward || S.rewards[k]) continue;
     if (RT.pop >= b.reward) { S.rewards[k] = 'unlocked'; news('🏅 보상 건물 「' + b.n + '」을(를) 지을 수 있습니다! (특수 메뉴)', 'good'); buildToolbar(); }
   }
@@ -576,7 +607,7 @@ function advise() {
   if (RT.pop > 2000 && S.eq < 40 && !hasBld('school')) { if (say('edu', '교육 고문: 학교가 없어 교육 수준이 낮습니다. 첨단 산업이 들어오지 않습니다.', 'info', 18)) return; }
   if (RT.pop > 1500 && !hasBld('hospital')) { say('health', '보건 고문: 병원을 지으면 기대수명과 주거 선호도가 올라갑니다.', 'info', 24); }
 }
-const MILESTONES = [500, 1000, 5000, 10000, 25000, 50000, 100000, 200000];
+const MILESTONES = [500, 1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 2000000, 5000000, 10000000];
 function monthly(init) {
   computeRoadDist();
   computePower();
@@ -590,6 +621,7 @@ function monthly(init) {
   if (init) { budgetMonth(false); return; }
   computeDemand();
   growZones();
+  growArcologies();
   const prevPop = RT.pop;
   computeTotals();
   processGarbage();
@@ -729,6 +761,7 @@ function placeOrigin(tool, x, y) { const sz = BLD[TOOLS[tool].bld].sz; const o =
 function canPlaceBld(key, ox, oy) {
   const b = BLD[key];
   if (b.reward && S.rewards[key] !== 'unlocked') return '아직 잠겨 있습니다';
+  if (b.unlock && !S.unlocked[key]) return `인구 ${fmt(b.unlock)} 달성 시 해금`;
   for (let y = oy; y < oy + b.sz; y++) for (let x = ox; x < ox + b.sz; x++) {
     if (!inb(x, y)) return '지도 밖입니다';
     const t = T[idx(x, y)];
@@ -838,7 +871,7 @@ function ws(x, y) { return [(x - y) * hw + camX, (x + y) * hh + camY]; }
 function sw(sx, sy) { const a = (sx - camX) / hw, b = (sy - camY) / hh; return [(a + b) / 2, (b - a) / 2]; }
 function tileAt(sx, sy) { const [x, y] = sw(sx, sy); const tx = Math.floor(x), ty = Math.floor(y); return inb(tx, ty) ? [tx, ty] : null; }
 function setZoom(nz, sx, sy) {
-  nz = clamp(nz, 0.35, 3);
+  nz = clamp(nz, 0.2, 3);
   const [wx, wy] = sw(sx, sy);
   zoom = nz; hw = TW / 2 * zoom; hh = TH / 2 * zoom;
   camX = sx - (wx - wy) * hw; camY = sy - (wx + wy) * hh;
@@ -973,7 +1006,7 @@ function drawZoneBld(x, y, t, time) {
       const roofC = ['#c0392b', '#8e5b3e', '#5d6d7e', '#a04030'][v];
       for (const [ox, oy, s] of spots) { const bx = box(x + ox, y + oy, s, s, 0, 9 + v, dim(wallC)); roof(bx, dim(roofC), 7); }
     } else {
-      const hgt = [0, 0, 0, 24, 36, 56, 78][L] + v * 4;
+      const hgt = [0, 0, 0, 24, 36, 56, 78, 112, 150][L] + v * 4;
       const col = ['#e8d9c0', '#d9cbb5', '#cdbfa7', '#e3d4bd'][v];
       const bx = box(x, y, 1, 1, L >= 5 ? 0.12 : 0.1, hgt, dim(col));
       windows(bx, Math.round(hgt / 8), lit);
@@ -988,15 +1021,15 @@ function drawZoneBld(x, y, t, time) {
       poly([[d[0], d[1] + y1], [c[0], c[1] + y1], [c[0], c[1] + y1 + 3 * zoom], [d[0], d[1] + y1 + 3 * zoom]], dim('#e74c3c'));
       poly([[c[0], c[1] + y1], [b[0], b[1] + y1], [b[0], b[1] + y1 + 3 * zoom], [c[0], c[1] + y1 + 3 * zoom]], dim('#c0392b'));
     } else {
-      const hgt = [0, 0, 0, 32, 46, 74, 104][L] + v * 6;
+      const hgt = [0, 0, 0, 32, 46, 74, 104, 140, 190][L] + v * 6;
       const col = ['#7fa7d1', '#5b86b5', '#86a8c4', '#6c8fb0'][v];
       const bx = box(x, y, 1, 1, L >= 5 ? 0.16 : 0.1, hgt, dim(col));
       windows(bx, Math.round(hgt / 7), ab ? lit : 'rgba(210,235,255,0.75)');
-      if (L === 6 && zoom > 0.6) { const tp = bx.up(bx.a), cc = bx.up(bx.c); const mx = (tp[0] + cc[0]) / 2, my = (tp[1] + cc[1]) / 2; ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1.5 * zoom; ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(mx, my - 14 * zoom); ctx.stroke(); }
+      if (L >= 6 && zoom > 0.6) { const tp = bx.up(bx.a), cc = bx.up(bx.c); const mx = (tp[0] + cc[0]) / 2, my = (tp[1] + cc[1]) / 2; ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1.5 * zoom; ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(mx, my - 14 * zoom); ctx.stroke(); }
     }
   } else {
     const hi = t.hi && !ab;
-    const hgt = [0, 10, 14, 18, 22, 28, 34][L];
+    const hgt = [0, 10, 14, 18, 22, 28, 34, 40, 48][L];
     const col = hi ? ['#cfd8dc', '#b0bec5', '#eceff1', '#c5cae9'][v] : ['#b8a07a', '#a58e66', '#9c8a6c', '#ad9776'][v];
     const bx = box(x, y, 1, 1, 0.08, hgt, dim(col));
     if (hi) { const { c, d, b } = bx; const yy = -bx.H * 0.5; ctx.strokeStyle = '#4fc3f7'; ctx.lineWidth = 2 * zoom; ctx.beginPath(); ctx.moveTo(d[0], d[1] + yy); ctx.lineTo(c[0], c[1] + yy); ctx.lineTo(b[0], b[1] + yy); ctx.stroke(); }
@@ -1115,7 +1148,7 @@ function render(time) {
   // 객체 (뒤에서 앞으로)
   const alpha = overlay === 'none' ? 1 : 0.4;
   ctx.globalAlpha = alpha;
-  const tallUp = 200 * zoom;
+  const tallUp = 300 * zoom;
   for (let s = 0; s <= W + H - 2; s++) {
     for (let x = Math.max(0, s - H + 1); x <= Math.min(s, W - 1); x++) {
       const y = s - x; if (!vis(x, y, tallUp)) continue;
@@ -1178,9 +1211,10 @@ function previewCost() {
 
 /* ---------------- 미니맵 ---------------- */
 const mini = $('mini'), mctx = mini.getContext('2d');
-const mimg = mctx.createImageData(W, H);
+let mimg = null;
 function drawMini() {
   if (!S) return;
+  if (!mimg || mimg.width !== W) mimg = mctx.createImageData(W, H);
   const d = mimg.data;
   for (let i = 0; i < N; i++) {
     const t = T[i]; let c;
@@ -1200,7 +1234,7 @@ function drawMini() {
   // 시야
   const c = sw(cw / 2, ch / 2); mctx.strokeStyle = '#fff'; mctx.lineWidth = 1.5;
   const corners = [sw(0, 52), sw(cw, 52), sw(cw, ch), sw(0, ch)];
-  mctx.beginPath(); corners.forEach((p, k) => { const px = p[0] * 2, py = p[1] * 2; k ? mctx.lineTo(px, py) : mctx.moveTo(px, py); }); mctx.closePath(); mctx.stroke();
+  mctx.beginPath(); corners.forEach((p, k) => { const px = p[0] * 128 / W, py = p[1] * 128 / H; k ? mctx.lineTo(px, py) : mctx.moveTo(px, py); }); mctx.closePath(); mctx.stroke();
 }
 mini.addEventListener('pointerdown', e => { const r = mini.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H; centerCamera(x, y); e.stopPropagation(); });
 
@@ -1329,10 +1363,10 @@ function openSub(k) {
   curCat = k; const c = CATS[k]; const sub = $('sub'); sub.innerHTML = `<div class="subhead">${c.n}</div>`;
   for (const key of c.tools) {
     const tl = TOOLS[key]; const b = BLD[tl.bld];
-    const locked = b && b.reward && !S.rewards[key];
+    const locked = b && ((b.reward && !S.rewards[key]) || (b.unlock && !S.unlocked[key]));
     const built = b && b.reward && S.rewards[key] === 'built';
     const el = document.createElement('button'); el.className = 'tool' + (tool === key ? ' on' : '') + (locked || built ? ' locked' : '');
-    const desc = locked ? `인구 ${fmt(b.reward)} 달성 시 해금` : built ? '건설 완료' : (tl.d || (tl.zone ? ZNAME[tl.zone[0]] + ' 구역 (' + DNAME[tl.zone[1]] + ')' : ''));
+    const desc = locked ? `인구 ${fmt(b.reward || b.unlock)} 달성 시 해금` : built ? '건설 완료' : (tl.d || (tl.zone ? ZNAME[tl.zone[0]] + ' 구역 (' + DNAME[tl.zone[1]] + ')' : ''));
     const cost = tl.cost ? '₩' + fmt(tl.cost) + (b ? '' : '') : (b && b.reward ? '무료' : '');
     el.innerHTML = `<span class="ic">${tl.ico}</span><span class="nm">${tl.n}<small>${desc}</small></span><span class="co">${cost}</span>`;
     el.onclick = e => { e.stopPropagation(); if (locked || built) return; selectTool(key); closeSub(); };
@@ -1357,7 +1391,7 @@ function refreshUI() {
   $('cityName').textContent = S.name;
   $('date').textContent = dateStr();
   const m = $('money'); m.textContent = '₩ ' + fmt(S.money); m.classList.toggle('neg', S.money < 0);
-  $('pop').textContent = fmt(RT.pop);
+  $('pop').textContent = fmt(RT.pop); $('rank').textContent = cityRank(RT.pop);
   for (const z of ['R', 'C', 'I']) {
     const el = $('d' + z), v = clamp(S.demand[z], -1, 1);
     el.style.background = ZCOL[z];
@@ -1535,7 +1569,9 @@ const TKEYS = ['ter', 'tree', 'k', 'z', 'd', 'lvl', 'occ', 'hi', 'ab', 'b', 'o',
 function serialize() { const o = Object.assign({}, S); o.tiles = T.map(t => TKEYS.map(k => t[k])); return JSON.stringify(o); }
 function deserialize(txt) {
   try {
-    const o = JSON.parse(txt); if (!o || !o.tiles || o.tiles.length !== N) return false;
+    const o = JSON.parse(txt); if (!o || !o.tiles) return false;
+    const w = o.W || 64; if (o.tiles.length !== w * w) return false;
+    setSize(w); o.W = w; o.unlocked = o.unlocked || {};
     o.tiles = o.tiles.map(a => { const t = newTile(); TKEYS.forEach((k, j) => t[k] = a[j]); return t; });
     S = o; T = S.tiles; tornado = null; calcWaterProx();
     for (let i = 0; i < N; i++) M.lv[i] = 50 + M.waterProx[i] * 40;
@@ -1557,6 +1593,7 @@ function showNewGame() {
    <div class="row"><label>지도 번호</label><input type="text" id="ngSeed" value="${(Math.random() * 99999) | 0}" style="width:110px;flex:0 0 auto"><button class="btn sec" id="ngRand">🎲</button></div>
    <div class="row"><label>물</label><select id="ngWater"><option value="0">없음</option><option value="1">적음</option><option value="2" selected>보통</option><option value="3">많음</option></select></div>
    <div class="row"><label>숲</label><select id="ngTrees"><option value="0">없음</option><option value="1">적음</option><option value="2" selected>보통</option><option value="3">많음</option></select></div>
+   <div class="row"><label>지도 크기</label><select id="ngSize"><option value="64">작음 64×64</option><option value="96">보통 96×96</option><option value="128" selected>큼 128×128 (천만 도전)</option></select></div>
    <div class="row"><label>난이도</label><select id="ngDiff"><option value="50000">쉬움 (₩50,000)</option><option value="20000" selected>보통 (₩20,000)</option><option value="10000">어려움 (₩10,000)</option></select></div>
    <label class="ord"><input type="checkbox" id="ngDis" checked><div><b>무작위 재해</b><small>끄면 직접 일으킬 때만 발생</small></div></label>
    <div class="row" style="margin-top:12px"><button class="btn" id="ngGo">도시 세우기</button>${hasSave ? '<button class="btn sec" id="ngCont">이어하기</button>' : ''}</div>`);
@@ -1564,7 +1601,7 @@ function showNewGame() {
   $('ngGo').onclick = () => {
     const seed = parseInt($('ngSeed').value, 10) || 1;
     modalOpen = null; $('modal').classList.add('hidden');
-    newGame({ name: $('ngName').value.trim() || '새 도시', seed, water: +$('ngWater').value, trees: +$('ngTrees').value, money: +$('ngDiff').value, disasters: $('ngDis').checked });
+    newGame({ size: +$('ngSize').value, name: $('ngName').value.trim() || '새 도시', seed, water: +$('ngWater').value, trees: +$('ngTrees').value, money: +$('ngDiff').value, disasters: $('ngDis').checked });
     buildToolbar(); selectTool('inspect'); setSpeed(2);
   };
   if (hasSave) $('ngCont').onclick = () => { modalOpen = null; $('modal').classList.add('hidden'); if (!(load('metro_save') || load('metro_autosave'))) showNewGame(); };
