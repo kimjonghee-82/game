@@ -366,8 +366,12 @@
       <button id="btn-copy-trip-code" type="button" class="btn small ghost">복사</button>
     </div>
   </label>
-  <div class="modal-actions" style="margin-top:4px;margin-bottom:14px">
+  <div class="modal-actions" style="margin-top:4px;margin-bottom:8px">
     <button id="btn-sync-push-now" type="button" class="btn small">📤 지금 이 기기 데이터 업로드</button>
+  </div>
+  <p class="help-text" id="storage-usage-info"></p>
+  <div class="modal-actions" style="margin-top:4px;margin-bottom:14px">
+    <button id="btn-clear-photos" type="button" class="btn small danger">🗑 이 여행 사진 전체 삭제 (저장 공간 확보)</button>
   </div>
 
   <label>이 여행의 시작일 <input type="date" id="settings-start-date"></label>
@@ -428,6 +432,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="app.js?v=80"></script>
+<script src="app.js?v=81"></script>
 </body>
 </html>
