@@ -1,5 +1,5 @@
 {
-  "name": "하노이 · 사파 여행 플래너",
+  "name": "여행 플래너",
   "short_name": "여행 플래너",
   "start_url": "./index.html",
   "scope": "./",

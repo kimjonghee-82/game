@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-<title>하노이 · 사파 여행 플래너</title>
+<title>여행 플래너</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#c0392b">
 <meta name="mobile-web-app-capable" content="yes">
@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="여행 플래너">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=53">
+<link rel="stylesheet" href="style.css?v=54">
 </head>
 <body>
 
@@ -29,7 +29,6 @@
     <button class="tab-btn" data-tab="expense">비용</button>
     <button class="tab-btn" data-tab="reference">투어 정보</button>
     <button class="tab-btn" data-tab="phrases">대화</button>
-    <button class="tab-btn" data-tab="other">기타</button>
   </nav>
 </header>
 
@@ -80,13 +79,6 @@
       <button id="phrase-next-btn" class="btn small day-nav-btn">다음 ▶</button>
     </div>
     <div id="phrase-category-view" class="day-view"></div>
-  </section>
-
-  <!-- ================= 기타 ================= -->
-  <section id="tab-other" class="tab-panel">
-    <div class="region-tabs" id="video-region-tabs"></div>
-    <div id="other-video-list" class="other-video-list"></div>
-    <button id="btn-add-video" class="fab-btn fab-center" title="영상 추가">+</button>
   </section>
 
 </main>
@@ -330,36 +322,6 @@
   </div>
 </div>
 
-<!-- 기타(영상) 편집 -->
-<div id="modal-video" class="modal hidden">
-  <div class="modal-title-row">
-    <h3 id="video-modal-title">영상 추가</h3>
-  </div>
-  <input type="hidden" id="video-id">
-  <input type="hidden" id="video-region-original">
-  <label>장소
-    <input type="text" id="video-region-input" list="video-region-list" placeholder="예: 하노이, 사파, 다낭...">
-    <datalist id="video-region-list"></datalist>
-  </label>
-  <label>제목 <input type="text" id="video-title" placeholder="예: 하노이 여행 브이로그"></label>
-  <label>영상 링크
-    <input type="text" id="video-url" placeholder="유튜브 / 구글 드라이브 / mp4·webm 링크">
-  </label>
-  <p class="help-text" style="margin-top:-6px">유튜브 링크는 광고가 그대로 노출될 수 있어요. 구글 드라이브 공유 링크(링크가 있는 모든 사용자로 공유) 또는 mp4/webm 파일 링크를 넣으면 광고 없이 재생됩니다.</p>
-  <label>화면 비율
-    <select id="video-orientation">
-      <option value="landscape">가로 (일반 촬영)</option>
-      <option value="portrait">세로 (휴대폰으로 세로로 찍은 영상)</option>
-    </select>
-  </label>
-  <div class="modal-actions">
-    <button id="video-delete-btn" class="btn danger">삭제</button>
-    <div class="spacer"></div>
-    <button id="video-cancel-btn" class="btn ghost">취소</button>
-    <button id="video-save-btn" class="btn primary">저장</button>
-  </div>
-</div>
-
 <!-- 카메라 번역 결과 -->
 <div id="modal-translate" class="modal hidden">
   <div class="modal-title-row">
@@ -391,8 +353,25 @@
   <h3>설정</h3>
   <p class="help-text">아래 값들은 이 브라우저에만(localStorage) 저장되며, 깃허브 저장소에는 절대 올라가지 않습니다.</p>
 
-  <label>여행 시작일 <input type="date" id="settings-start-date"></label>
-  <label>여행 종료일 <input type="date" id="settings-end-date"></label>
+  <h4>내 여행</h4>
+  <p class="help-text">여러 번의 여행을 각각 독립된 데이터로 관리합니다. 같은 동기화 코드를 입력한 기기끼리는 일정·비용·투어 정보가 자동으로 동기화됩니다.</p>
+  <div id="trip-list" class="trip-list"></div>
+  <div class="modal-actions" style="margin-top:8px;margin-bottom:10px">
+    <button id="btn-add-trip" type="button" class="btn small">+ 새 여행 만들기</button>
+    <button id="btn-join-trip" type="button" class="btn small ghost">🔗 코드로 참여하기</button>
+  </div>
+  <label>이 여행의 동기화 코드 (동행에게 공유)
+    <div class="trip-code-row">
+      <input type="text" id="current-trip-code-display" readonly>
+      <button id="btn-copy-trip-code" type="button" class="btn small ghost">복사</button>
+    </div>
+  </label>
+  <div class="modal-actions" style="margin-top:4px;margin-bottom:14px">
+    <button id="btn-sync-push-now" type="button" class="btn small">📤 지금 이 기기 데이터 업로드</button>
+  </div>
+
+  <label>이 여행의 시작일 <input type="date" id="settings-start-date"></label>
+  <label>이 여행의 종료일 <input type="date" id="settings-end-date"></label>
 
   <h4>사진 분석용 Groq API 키</h4>
   <p class="help-text">사진을 AI 비전 모델이 직접 보고 상호/장소/영수증 정보를 정리하거나(일정·비용·투어 정보) 사진 속 외국어를 한국어로 번역하는 데(카메라 번역) 사용됩니다. <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com</a>에서 발급받으세요. Groq API는 완전 무료이며 카드 등록이 필요 없습니다. (미입력 시 또는 분석 실패 시 사진의 촬영시간·GPS 위치만 자동 인식됩니다)</p>
@@ -418,15 +397,8 @@
     <button id="btn-export-sheet" class="btn small">📊 지금 구글 시트로 내보내기</button>
   </div>
 
-  <h4>실시간 동기화 (트립 코드)</h4>
-  <p class="help-text">일정·비용·투어 정보·기타(영상)를 다른 기기와 실시간으로 자동 동기화합니다. 아무것도 입력하지 않으면 기본 코드로 자동 연결되어 별도 설정 없이 PC/모바일 간 동기화됩니다. 우리끼리만 쓰고 싶다면 원하는 코드를 만들어서 모든 기기에 똑같이 입력하세요. 동기화 켜지기 <b>전에</b> 이미 저장해둔 데이터가 있다면(예: 예전에 PC에서 올린 영상), 아래 버튼을 한 번 눌러 지금 이 기기 데이터를 클라우드에 올려주세요 — 그래야 다른 기기에도 나타납니다.</p>
-  <input type="text" id="settings-trip-code" placeholder="비워두면 기본 코드로 자동 동기화">
-  <div class="modal-actions" style="margin-top:8px;margin-bottom:14px">
-    <button id="btn-sync-push-now" class="btn small">📤 지금 이 기기 데이터 업로드</button>
-  </div>
-
-  <h4>다른 기기와 설정 공유</h4>
-  <p class="help-text">API 키를 포함한 현재 설정을 코드로 만들어서, 다른 기기의 설정 화면에 붙여넣으면 그대로 복사됩니다. 이 코드 안에 API 키가 그대로 들어있으니 본인만 아는 안전한 곳(메모앱 등)에 보관하세요 — <b>깃허브에는 올라가지 않습니다.</b></p>
+  <h4>다른 기기와 API 키 공유</h4>
+  <p class="help-text">API 키 등 이 기기의 공통 설정을 코드로 만들어서, 다른 기기의 설정 화면에 붙여넣으면 그대로 복사됩니다(여행 목록은 포함되지 않음 — 여행은 위 "코드로 참여하기"로 합류하세요). 이 코드 안에 API 키가 그대로 들어있으니 본인만 아는 안전한 곳(메모앱 등)에 보관하세요 — <b>깃허브에는 올라가지 않습니다.</b></p>
   <label>내보내기 코드
     <textarea id="settings-export-code" rows="3" readonly placeholder="아래 '코드 생성'을 누르면 여기에 표시됩니다"></textarea>
   </label>
@@ -456,6 +428,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="app.js?v=78"></script>
+<script src="app.js?v=79"></script>
 </body>
 </html>

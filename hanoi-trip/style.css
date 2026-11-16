@@ -271,24 +271,16 @@ body{
 .phrase-list .p-pron{color:var(--muted);font-size:12px}
 @media (max-width:700px){.phrase-list li{grid-template-columns:1fr}}
 
-/* ===== 기타(영상) ===== */
-.other-video-list{display:flex;flex-direction:column;gap:14px;padding-bottom:84px;touch-action:pan-y;flex:1 1 auto}
-.video-card{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
-.video-embed{position:relative;width:100%;padding-top:56.25%;background:#000}
-.video-embed.portrait{padding-top:0;height:75vh;max-height:640px}
-.video-embed iframe,.video-embed video{position:absolute;top:0;left:0;width:100%;height:100%;border:0}
-.video-fullscreen-btn{position:absolute;top:8px;right:8px;z-index:5;width:32px;height:32px;border-radius:8px;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
-.video-fullscreen-btn:active{background:rgba(0,0,0,.8)}
-.video-broken{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:12.5px;text-align:center;padding:0 16px}
-.video-thumb{position:absolute;inset:0;cursor:pointer}
-.video-thumb img{width:100%;height:100%;object-fit:cover;display:block}
-.video-play-btn{
-  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-  width:56px;height:56px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;
-  display:flex;align-items:center;justify-content:center;font-size:22px;padding-left:4px;
-}
-.video-title-row{padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px}
-.video-title{font-size:14px;font-weight:bold;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ===== 내 여행 목록 ===== */
+.trip-list{display:flex;flex-direction:column;gap:8px}
+.trip-list-item{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.trip-list-item.active{border-color:var(--accent);background:#fdf3f1}
+.trip-list-info{flex:1;min-width:0}
+.trip-list-name{font-size:14px;font-weight:bold;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trip-list-dates{font-size:12px;color:var(--muted);margin-top:2px}
+.trip-active-badge{font-size:12px;color:var(--accent);font-weight:bold;flex:0 0 auto}
+.trip-code-row{display:flex;gap:8px}
+.trip-code-row input{flex:1}
 
 /* ===== 카메라 번역 ===== */
 .translate-thumb-wrap{width:100%;border-radius:10px;overflow:hidden;margin-bottom:10px;background:#000;position:relative}
