@@ -690,8 +690,7 @@ function pushSyncNow() {
     .catch(e => {
       console.error('sync push failed', e);
       setSyncStatus('error');
-      const isQuotaError = e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message || ''));
-      if (isQuotaError) {
+      if (isQuotaError(e)) {
         toast('⚠️ 이 기기의 저장 공간이 가득 찼어요. 영수증 사진을 많이 등록한 여행이 있다면 일부를 정리해주세요. (저장 공간이 부족한 동안은 동기화가 계속 실패합니다)', 8000);
       } else {
         toast('⚠️ 동기화 저장에 실패했어요. 잠시 후 자동으로 다시 시도합니다. (' + (e && e.message ? e.message.slice(0, 80) : '') + ')', 6000);
@@ -3151,6 +3150,32 @@ document.getElementById('settings-translate-lang').innerHTML =
 
 /* -------- 내 여행 (멀티 여행 전환/생성/참여) -------- */
 
+/** localStorage는 브라우저별로 보통 5~10MB 제한이 있음. 영수증 사진(base64)이 쌓이면 이 제한에
+    가까워질 수 있어서, 설정 화면에 대략적인 사용량을 보여줘서 "동기화 저장 실패"가 뜰 때
+    원인을 바로 알 수 있게 함. */
+function getLocalStorageUsageBytes() {
+  let total = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    const v = localStorage.getItem(k) || '';
+    total += (k.length + v.length) * 2; // UTF-16 기준 대략치
+  }
+  return total;
+}
+
+/** 현재 여행의 일정/비용에 첨부된 사진을 전부 제거해서 저장 공간을 확보함. 사진은 애초에
+    기기 로컬 전용(동기화 안 됨)이라, 지워도 다른 기기나 서버 데이터에는 영향 없음. */
+function clearAllPhotosForActiveTrip() {
+  saveItinerary(loadItinerary().map(({ photos, photoThumb, photoMeta, ...rest }) => rest));
+  saveExpenses(loadExpenses().map(({ photos, photoThumb, photoMeta, ...rest }) => rest));
+}
+
+function updateStorageUsageDisplay() {
+  const mb = (getLocalStorageUsageBytes() / 1024 / 1024).toFixed(1);
+  document.getElementById('storage-usage-info').textContent =
+    `이 기기 저장 공간 사용량: 약 ${mb}MB (브라우저 제한은 보통 5~10MB — 영수증 사진이 많이 쌓이면 가득 찰 수 있어요)`;
+}
+
 function renderTripList() {
   const registry = loadTripRegistry();
   const activeCode = getActiveTripCode();
@@ -3166,7 +3191,18 @@ function renderTripList() {
            <button type="button" class="icon-btn trip-delete-btn" data-code="${escapeHtml(t.code)}" title="삭제">🗑</button>`}
     </div>`).join('');
   document.getElementById('current-trip-code-display').value = activeCode;
+  updateStorageUsageDisplay();
 }
+
+document.getElementById('btn-clear-photos').addEventListener('click', () => {
+  const trip = getActiveTrip();
+  if (!confirm(`"${trip.name}" 여행에 등록된 모든 사진을 삭제할까요?\n\n일정·비용 내용(금액, 메모 등)은 그대로 남고 첨부된 사진만 삭제됩니다. 사진은 기기에만 저장돼 있어서 삭제하면 복구할 수 없습니다.`)) return;
+  clearAllPhotosForActiveTrip();
+  renderItineraryGrid();
+  renderExpenseTab();
+  updateStorageUsageDisplay();
+  toast('사진을 모두 삭제해서 저장 공간을 확보했습니다');
+});
 
 /** 여행 전환: 저장된 데이터는 전환하는 순간 자동으로 저장되어 있던 그대로 다시 나타남(여행마다
     독립된 localStorage 네임스페이스를 쓰기 때문). 화면 상태(보던 날짜/카테고리 등)만 초기화함. */
@@ -3202,6 +3238,20 @@ document.getElementById('trip-list').addEventListener('click', (e) => {
   }
 });
 
+/** localStorage 쓰기가 용량 초과로 실패하면, 사용자가 뭘 해야 하는지 바로 알 수 있게
+    "이 여행 사진 전체 삭제" 버튼을 가리키는 안내 토스트를 보여줌. */
+function isQuotaError(e) {
+  return !!(e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message || '')));
+}
+function handleStorageWriteError(e, actionLabel) {
+  console.error(actionLabel + ' 실패', e);
+  if (isQuotaError(e)) {
+    toast('⚠️ 이 기기의 저장 공간이 가득 차서 ' + actionLabel + '에 실패했어요. 설정 화면의 "🗑 이 여행 사진 전체 삭제"로 공간을 확보한 뒤 다시 시도해주세요.', 8000);
+  } else {
+    toast('⚠️ ' + actionLabel + '에 실패했어요. (' + (e && e.message ? e.message.slice(0, 80) : '') + ')', 6000);
+  }
+}
+
 document.getElementById('btn-add-trip').addEventListener('click', () => {
   const name = prompt('새 여행 이름을 입력하세요 (예: 오사카 2027)');
   if (!name || !name.trim()) return;
@@ -3209,26 +3259,34 @@ document.getElementById('btn-add-trip').addEventListener('click', () => {
   if (!startDate) return;
   const endDate = prompt('여행 종료일을 입력하세요 (예: 2027-03-15)', startDate);
   if (!endDate) return;
-  const code = generateTripCode(name.trim());
-  const registry = loadTripRegistry();
-  registry.push({ code, name: name.trim(), startDate, endDate, createdAt: Date.now() });
-  saveTripRegistry(registry);
-  switchActiveTrip(code);
-  toast('새 여행을 만들었습니다');
+  try {
+    const code = generateTripCode(name.trim());
+    const registry = loadTripRegistry();
+    registry.push({ code, name: name.trim(), startDate, endDate, createdAt: Date.now() });
+    saveTripRegistry(registry);
+    switchActiveTrip(code);
+    toast('새 여행을 만들었습니다');
+  } catch (e) {
+    handleStorageWriteError(e, '새 여행 만들기');
+  }
 });
 
 document.getElementById('btn-join-trip').addEventListener('click', () => {
   const code = prompt('동행이 알려준 여행 코드를 입력하세요');
   if (!code || !code.trim()) return;
   const trimmed = code.trim();
-  const registry = loadTripRegistry();
-  if (!registry.some(t => t.code === trimmed)) {
-    const name = prompt('이 여행을 부를 이름을 입력하세요', trimmed);
-    registry.push({ code: trimmed, name: (name || trimmed).trim(), startDate: todayStr(), endDate: todayStr(), createdAt: Date.now() });
-    saveTripRegistry(registry);
+  try {
+    const registry = loadTripRegistry();
+    if (!registry.some(t => t.code === trimmed)) {
+      const name = prompt('이 여행을 부를 이름을 입력하세요', trimmed);
+      registry.push({ code: trimmed, name: (name || trimmed).trim(), startDate: todayStr(), endDate: todayStr(), createdAt: Date.now() });
+      saveTripRegistry(registry);
+    }
+    switchActiveTrip(trimmed);
+    toast('여행에 참여했습니다. 날짜가 맞지 않으면 아래에서 고쳐주세요');
+  } catch (e) {
+    handleStorageWriteError(e, '여행 참여');
   }
-  switchActiveTrip(trimmed);
-  toast('여행에 참여했습니다. 날짜가 맞지 않으면 아래에서 고쳐주세요');
 });
 
 document.getElementById('btn-copy-trip-code').addEventListener('click', async () => {
