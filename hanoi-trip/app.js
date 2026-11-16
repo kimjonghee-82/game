@@ -331,21 +331,34 @@ function saveTripRegistry(v) { save(TRIP_REGISTRY_KEY, v); }
 
 function tripStorageKey(code, base) { return 'trip_' + code + '_' + base; }
 
+const LEGACY_FLAT_KEYS = {
+  settings: 'hanoi_trip_settings_v1',
+  itinerary: 'hanoi_trip_itinerary_v1',
+  expenses: 'hanoi_trip_expenses_v1',
+  reference: 'hanoi_trip_reference_v1',
+  phrases: 'hanoi_trip_phrases_v1',
+  translations: 'hanoi_trip_translations_v1',
+  documents: 'hanoi_trip_documents_v1',
+  localDocuments: 'hanoi_trip_local_documents_v1',
+  syncBaseline: 'hanoi_trip_sync_baseline_v1',
+};
+
 /** 예전(여행을 하나만 지원하던 버전)에 쓰던 평평한 키들을 최초 1회 여행 레지스트리 구조로 이관.
-    기존 데이터는 절대 지우지 않고 새 키로 그대로 복사만 함. */
+    데이터는 새 키로 복사한 뒤 반드시 예전 키는 지움 — 안 지우면 (특히 영수증 사진이 쌓인 기기에서)
+    같은 데이터가 두 벌 저장돼 localStorage 용량 제한을 넘기고, 이후 모든 저장이
+    "Failed to execute 'setItem' on 'Storage'" 에러로 실패하게 됨. */
 function ensureDefaultTripMigrated() {
-  if (load(TRIP_REGISTRY_KEY, null)) return;
-  const LEGACY_FLAT_KEYS = {
-    settings: 'hanoi_trip_settings_v1',
-    itinerary: 'hanoi_trip_itinerary_v1',
-    expenses: 'hanoi_trip_expenses_v1',
-    reference: 'hanoi_trip_reference_v1',
-    phrases: 'hanoi_trip_phrases_v1',
-    translations: 'hanoi_trip_translations_v1',
-    documents: 'hanoi_trip_documents_v1',
-    localDocuments: 'hanoi_trip_local_documents_v1',
-    syncBaseline: 'hanoi_trip_sync_baseline_v1',
-  };
+  if (load(TRIP_REGISTRY_KEY, null)) {
+    // 이미 마이그레이션된 기기라도, 예전 버전의 버그로 레거시 키가 안 지워진 채 남아있을 수 있으니
+    // (그대로 두면 용량을 두 배로 차지함) 한 번 더 정리함. 이미 지워졌으면 아무 일도 안 일어남.
+    if (localStorage.getItem(LEGACY_FLAT_KEYS.itinerary) !== null) {
+      Object.keys(TRIP_BASE_KEYS).forEach(base => {
+        const legacyKey = LEGACY_FLAT_KEYS[base];
+        if (legacyKey) localStorage.removeItem(legacyKey);
+      });
+    }
+    return;
+  }
   const legacySettings = load(LEGACY_FLAT_KEYS.settings, null);
   const code = (legacySettings && legacySettings.tripCode && legacySettings.tripCode.trim()) || DEFAULT_TRIP_CODE;
   const registry = [{
@@ -360,7 +373,10 @@ function ensureDefaultTripMigrated() {
     const legacyKey = LEGACY_FLAT_KEYS[base];
     if (!legacyKey) return;
     const raw = localStorage.getItem(legacyKey);
-    if (raw !== null) localStorage.setItem(tripStorageKey(code, TRIP_BASE_KEYS[base]), raw);
+    if (raw !== null) {
+      localStorage.setItem(tripStorageKey(code, TRIP_BASE_KEYS[base]), raw);
+      localStorage.removeItem(legacyKey);
+    }
   });
 
   saveTripRegistry(registry);
@@ -674,7 +690,12 @@ function pushSyncNow() {
     .catch(e => {
       console.error('sync push failed', e);
       setSyncStatus('error');
-      toast('⚠️ 동기화 저장에 실패했어요. 잠시 후 자동으로 다시 시도합니다. (' + (e && e.message ? e.message.slice(0, 80) : '') + ')', 6000);
+      const isQuotaError = e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message || ''));
+      if (isQuotaError) {
+        toast('⚠️ 이 기기의 저장 공간이 가득 찼어요. 영수증 사진을 많이 등록한 여행이 있다면 일부를 정리해주세요. (저장 공간이 부족한 동안은 동기화가 계속 실패합니다)', 8000);
+      } else {
+        toast('⚠️ 동기화 저장에 실패했어요. 잠시 후 자동으로 다시 시도합니다. (' + (e && e.message ? e.message.slice(0, 80) : '') + ')', 6000);
+      }
       clearTimeout(syncPushTimer);
       syncPushTimer = setTimeout(pushSyncNow, 8000); // 별도 변경이 없어도 실패하면 잠시 뒤 재시도
       throw e;
