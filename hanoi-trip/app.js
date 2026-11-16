@@ -1,5 +1,5 @@
 /* ==========================================================================
-   하노이·사파 여행 플래너
+   여행 플래너 (여러 번의 여행을 각각 독립된 데이터로 관리)
    모든 데이터는 브라우저 localStorage 에만 저장됩니다 (서버/백엔드 없음).
    ========================================================================== */
 
@@ -7,21 +7,29 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }
 
-const STORAGE_KEYS = {
-  settings: 'hanoi_trip_settings_v1',
-  itinerary: 'hanoi_trip_itinerary_v1',
-  expenses: 'hanoi_trip_expenses_v1',
-  reference: 'hanoi_trip_reference_v1',
-  phrases: 'hanoi_trip_phrases_v1',
-  fxCache: 'hanoi_trip_fx_cache_v1',
-  otherVideos: 'hanoi_trip_other_videos_v1',
-  translations: 'hanoi_trip_translations_v1',
-  documents: 'hanoi_trip_documents_v1',
-  localDocuments: 'hanoi_trip_local_documents_v1',
+/** 여행마다 따로 저장되는 데이터의 base 이름들 (실제 localStorage 키는 tripStorageKey()로 여행 코드가 붙음) */
+const TRIP_BASE_KEYS = {
+  itinerary: 'itinerary',
+  expenses: 'expenses',
+  reference: 'reference',
+  phrases: 'phrases',
+  translations: 'translations',
+  documents: 'documents',
+  localDocuments: 'localDocuments',
+  syncBaseline: 'syncBaseline',
 };
 
-/** 여러 기기 간 실시간 동기화 대상 (Firestore 로 미러링됨). 번역/음성 기록 등은 기기 로컬 전용. */
-const SYNC_STORAGE_KEYS = [STORAGE_KEYS.itinerary, STORAGE_KEYS.expenses, STORAGE_KEYS.reference, STORAGE_KEYS.otherVideos, STORAGE_KEYS.documents];
+/** 여러 기기 간 실시간 동기화 대상인 base 이름 (Firestore 로 미러링됨). 번역/음성 기록 등은 기기 로컬 전용. */
+const SYNC_TRIP_BASE_KEYS = [TRIP_BASE_KEYS.itinerary, TRIP_BASE_KEYS.expenses, TRIP_BASE_KEYS.reference, TRIP_BASE_KEYS.documents];
+
+/** 여행에 상관없이 이 기기 전체에 공통으로 적용되는 설정(API 키 등) */
+const STORAGE_KEYS = {
+  settings: 'hanoi_trip_settings_v1',
+  fxCache: 'hanoi_trip_fx_cache_v1',
+};
+
+const TRIP_REGISTRY_KEY = 'hanoi_trip_registry_v1';
+const ACTIVE_TRIP_KEY = 'hanoi_trip_active_code_v1';
 
 const TRANSLATE_SOURCE_LANGS = ['자동 감지', '베트남어', '영어', '중국어', '일본어'];
 
@@ -35,7 +43,11 @@ const EXPENSE_CATEGORY_ICONS = {
   '교통': '🚌', '식사': '🍴', '관광/입장료': '🎫', '숙박': '🏨', '쇼핑': '🛍️', '기타': '📦',
 };
 
-/* ---------------------------- 기본 시드 데이터 ---------------------------- */
+/* ---------------------------- 하노이·사파 여행 템플릿 데이터 ----------------------------
+   예전에는 새 여행을 시작할 때마다 이 데이터를 자동으로 채워넣었지만, 이제 여행마다 다른
+   목적지로 쓸 수 있도록 새 여행은 투어 정보·위시리스트·대화 모두 빈 상태로 시작하고 사용자가
+   직접 채움. 이 데이터는 코드에만 보관해두고(지우지 않음) — 나중에 "템플릿 선택" 기능을 추가하면
+   베트남(하노이·사파) 템플릿으로 재사용할 수 있음. 지금은 어디서도 자동으로 적용되지 않음. */
 
 const DEFAULT_REFERENCE = {
   hanoi: [
@@ -257,8 +269,9 @@ const DEFAULT_PHRASES = [
   ]},
 ];
 
-/* 사용자가 정리해둔 실제 일정표(엑셀)를 옮겨온 기본 데이터. 처음 실행 시 한 번만 채워지며,
-   이미 일정이 있으면(사용자가 뭔가 추가/수정했으면) 절대 덮어쓰지 않음. */
+/* 하노이·사파 여행 때 사용자가 정리해둔 실제 일정표(엑셀)를 옮겨온 데이터.
+   더 이상 자동으로 채워넣지 않음(위 템플릿 데이터 설명 참고) — 하노이·사파 여행은 예전에 이미
+   이 데이터로 채워진 채 localStorage에 저장돼 있어서, 마이그레이션 때 그 데이터를 그대로 옮겨옴. */
 const SEED_ITINERARY = [
   { date: '2026-08-15', time: '08:30', text: '집 출발', category: '이동' },
   { date: '2026-08-15', time: '09:10', text: '리무진 출발', category: '이동' },
@@ -306,83 +319,144 @@ function load(key, fallback) {
 }
 function save(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
-  if (SYNC_STORAGE_KEYS.includes(key)) scheduleSyncPush();
+}
+
+/* ------------------------- 여행 레지스트리 (멀티 여행 지원) -------------------------
+   여행마다 독립된 데이터를 저장하기 위해, localStorage 키 이름 끝에 "여행 코드"를 붙여서
+   네임스페이스를 나눔. 이 코드는 Firestore 문서 id로도 그대로 쓰여서, 같은 코드를 입력한
+   기기끼리는 자동으로 같은 여행이 동기화됨. */
+
+function loadTripRegistry() { return load(TRIP_REGISTRY_KEY, []); }
+function saveTripRegistry(v) { save(TRIP_REGISTRY_KEY, v); }
+
+function tripStorageKey(code, base) { return 'trip_' + code + '_' + base; }
+
+/** 예전(여행을 하나만 지원하던 버전)에 쓰던 평평한 키들을 최초 1회 여행 레지스트리 구조로 이관.
+    기존 데이터는 절대 지우지 않고 새 키로 그대로 복사만 함. */
+function ensureDefaultTripMigrated() {
+  if (load(TRIP_REGISTRY_KEY, null)) return;
+  const LEGACY_FLAT_KEYS = {
+    settings: 'hanoi_trip_settings_v1',
+    itinerary: 'hanoi_trip_itinerary_v1',
+    expenses: 'hanoi_trip_expenses_v1',
+    reference: 'hanoi_trip_reference_v1',
+    phrases: 'hanoi_trip_phrases_v1',
+    translations: 'hanoi_trip_translations_v1',
+    documents: 'hanoi_trip_documents_v1',
+    localDocuments: 'hanoi_trip_local_documents_v1',
+    syncBaseline: 'hanoi_trip_sync_baseline_v1',
+  };
+  const legacySettings = load(LEGACY_FLAT_KEYS.settings, null);
+  const code = (legacySettings && legacySettings.tripCode && legacySettings.tripCode.trim()) || DEFAULT_TRIP_CODE;
+  const registry = [{
+    code,
+    name: '하노이·사파',
+    startDate: (legacySettings && legacySettings.startDate) || '2026-08-15',
+    endDate: (legacySettings && legacySettings.endDate) || '2026-08-23',
+    createdAt: Date.now(),
+  }];
+
+  Object.keys(TRIP_BASE_KEYS).forEach(base => {
+    const legacyKey = LEGACY_FLAT_KEYS[base];
+    if (!legacyKey) return;
+    const raw = localStorage.getItem(legacyKey);
+    if (raw !== null) localStorage.setItem(tripStorageKey(code, TRIP_BASE_KEYS[base]), raw);
+  });
+
+  saveTripRegistry(registry);
+  save(ACTIVE_TRIP_KEY, code);
+}
+
+function getActiveTripCode() {
+  ensureDefaultTripMigrated();
+  const registry = loadTripRegistry();
+  let code = load(ACTIVE_TRIP_KEY, null);
+  if (!code || !registry.some(t => t.code === code)) {
+    code = registry[0] ? registry[0].code : DEFAULT_TRIP_CODE;
+  }
+  return code;
+}
+function setActiveTripCode(code) { save(ACTIVE_TRIP_KEY, code); }
+
+function getActiveTrip() {
+  const code = getActiveTripCode();
+  return loadTripRegistry().find(t => t.code === code)
+    || { code, name: '여행', startDate: todayStr(), endDate: todayStr() };
+}
+
+/** 여행 이름으로부터 사람이 알아보기 쉬운 동기화 코드를 자동 생성 (동행에게 공유해서 함께 쓸 수 있음) */
+function generateTripCode(name) {
+  const slug = (name || 'trip').toLowerCase().replace(/[^a-z0-9가-힣]+/g, '-').replace(/^-+|-+$/g, '');
+  return (slug || 'trip') + '-' + Math.random().toString(36).slice(2, 7);
+}
+
+function loadTrip(base, fallback) { return load(tripStorageKey(getActiveTripCode(), base), fallback); }
+function saveTrip(base, value) {
+  localStorage.setItem(tripStorageKey(getActiveTripCode(), base), JSON.stringify(value));
+  if (SYNC_TRIP_BASE_KEYS.includes(base)) scheduleSyncPush();
 }
 
 function loadSettings() {
   return load(STORAGE_KEYS.settings, {
-    startDate: '2026-08-15',
-    endDate: '2026-08-23',
     groqApiKey: '',
     groqVisionModel: '',
     googleClientId: '',
     googleSpreadsheetId: '',
     translateSourceLang: '베트남어',
-    tripCode: '',
   });
 }
 function saveSettings(s) { save(STORAGE_KEYS.settings, s); }
 
-function loadItinerary() { return load(STORAGE_KEYS.itinerary, []); }
-function saveItinerary(v) { save(STORAGE_KEYS.itinerary, v); }
-function loadExpenses() { return load(STORAGE_KEYS.expenses, []); }
-function saveExpenses(v) { save(STORAGE_KEYS.expenses, v); }
-/** 예전 데이터엔 위시리스트 지역이 없었으므로, 없으면 빈 배열로 자동 추가 */
+function loadItinerary() { return loadTrip(TRIP_BASE_KEYS.itinerary, []); }
+function saveItinerary(v) { saveTrip(TRIP_BASE_KEYS.itinerary, v); }
+function loadExpenses() { return loadTrip(TRIP_BASE_KEYS.expenses, []); }
+function saveExpenses(v) { saveTrip(TRIP_BASE_KEYS.expenses, v); }
+/** 위시리스트 카테고리는 고정 목록이 아니라 여행마다 사용자가 직접 등록하는 동적 목록("+"로 추가).
+    예전 데이터 호환을 위해, 이미 채워져 있는 wish_* 키들로부터 카테고리 목록을 자동 복원함. */
 function loadReference() {
-  const v = load(STORAGE_KEYS.reference, null);
+  const raw = loadTrip(TRIP_BASE_KEYS.reference, null);
+  const v = raw || {};
+  let changed = !raw;
   // 이전 버전엔 위시리스트가 카테고리 구분 없이 하나의 배열이었음. 그 데이터를 잃지 않도록
   // 새 "기타" 카테고리로 자동 이관.
-  if (v && Array.isArray(v.wishlist)) {
+  if (Array.isArray(v.wishlist)) {
     v.wish_etc = [...(v.wish_etc || []), ...v.wishlist];
     delete v.wishlist;
-    save(STORAGE_KEYS.reference, v);
+    changed = true;
   }
-  // 위시리스트 카테고리를 한 번도 채운 적이 없으면(카테고리 키 자체가 없으면) 기본 음식 목록으로 채워줌.
-  // 사용자가 나중에 전부 지워도 다시 채워지지 않도록, 키가 하나라도 존재하면 건드리지 않음.
-  if (v && !REF_WISHLIST_CATEGORIES.some(c => c.key in v)) {
-    REF_WISHLIST_CATEGORIES.forEach(c => {
-      v[c.key] = (DEFAULT_WISHLIST[c.key] || []).map(item => ({ id: uid(), done: false, ...item }));
-    });
-    save(STORAGE_KEYS.reference, v);
+  if (!Array.isArray(v.__wishlistCategories)) {
+    const legacyLabels = Object.fromEntries(REF_WISHLIST_CATEGORIES.map(c => [c.key, c.label]));
+    v.__wishlistCategories = Object.keys(v)
+      .filter(k => k.startsWith('wish_'))
+      .map(k => ({ id: k, label: legacyLabels[k] || k }));
+    changed = true;
   }
   // 더 이상 쓰지 않는 위시리스트 카테고리는 안에 남은 항목이 없을 때만 저장소에서도 정리.
   // 사용자가 뭔가 넣어둔 게 있다면(드물겠지만) 데이터를 잃지 않도록 그대로 둠.
-  let removedEmpty = false;
   REF_REMOVED_WISHLIST_KEYS.forEach(key => {
-    if (v && key in v && (v[key] || []).length === 0) {
+    if (key in v && (v[key] || []).length === 0) {
       delete v[key];
-      removedEmpty = true;
+      changed = true;
     }
   });
-  if (removedEmpty) save(STORAGE_KEYS.reference, v);
+  if (changed) saveTrip(TRIP_BASE_KEYS.reference, v);
   return v;
 }
-function saveReference(v) { save(STORAGE_KEYS.reference, v); }
-function loadPhrases() { return load(STORAGE_KEYS.phrases, null); }
-function savePhrases(v) { save(STORAGE_KEYS.phrases, v); }
+function saveReference(v) { saveTrip(TRIP_BASE_KEYS.reference, v); }
+function loadPhrases() { return loadTrip(TRIP_BASE_KEYS.phrases, []); }
+function savePhrases(v) { saveTrip(TRIP_BASE_KEYS.phrases, v); }
 function loadFxCache() { return load(STORAGE_KEYS.fxCache, {}); }
 function saveFxCache(v) { save(STORAGE_KEYS.fxCache, v); }
-/** 예전엔 영상이 평평한 배열로 저장됐음. 장소별 객체로 자동 이관해서 기존 영상을 잃지 않도록 함. */
-function loadVideos() {
-  const v = load(STORAGE_KEYS.otherVideos, null);
-  if (Array.isArray(v)) {
-    const migrated = { hanoi: v, sapa: [] };
-    save(STORAGE_KEYS.otherVideos, migrated);
-    return migrated;
-  }
-  return v || { hanoi: [], sapa: [] };
-}
-function saveVideos(v) { save(STORAGE_KEYS.otherVideos, v); }
-function loadTranslations() { return load(STORAGE_KEYS.translations, []); }
-function saveTranslations(v) { save(STORAGE_KEYS.translations, v); }
-function loadDocuments() { return load(STORAGE_KEYS.documents, []); }
-function saveDocuments(v) { save(STORAGE_KEYS.documents, v); }
+function loadTranslations() { return loadTrip(TRIP_BASE_KEYS.translations, []); }
+function saveTranslations(v) { saveTrip(TRIP_BASE_KEYS.translations, v); }
+function loadDocuments() { return loadTrip(TRIP_BASE_KEYS.documents, []); }
+function saveDocuments(v) { saveTrip(TRIP_BASE_KEYS.documents, v); }
 /** 이 기기에 오프라인 사본(Cache Storage)이 있는 자료 id 목록. 기기 로컬 전용이라 동기화되지 않음.
     예전엔 로컬 자료가 loadDocuments()와 별개인 전체 레코드로 저장됐었는데, 지금은 자료 하나가
     링크와 오프라인 사본을 동시에 가질 수 있도록 메타데이터는 loadDocuments()로 통합하고 여기는
     "이 기기에 오프라인 사본이 있는지"만 id로 표시. 예전 형식 데이터는 최초 로드 시 자동 이관. */
 function loadLocalCacheIds() {
-  const raw = load(STORAGE_KEYS.localDocuments, []);
+  const raw = loadTrip(TRIP_BASE_KEYS.localDocuments, []);
   if (raw.length && raw[0] && typeof raw[0] === 'object' && 'name' in raw[0]) {
     const docs = loadDocuments();
     raw.forEach(old => {
@@ -392,12 +466,12 @@ function loadLocalCacheIds() {
     });
     saveDocuments(docs);
     const ids = raw.map(old => old.id);
-    save(STORAGE_KEYS.localDocuments, ids);
+    saveTrip(TRIP_BASE_KEYS.localDocuments, ids);
     return ids;
   }
   return raw;
 }
-function saveLocalCacheIds(v) { save(STORAGE_KEYS.localDocuments, v); }
+function saveLocalCacheIds(v) { saveTrip(TRIP_BASE_KEYS.localDocuments, v); }
 function localDocCacheKey(id) { return location.origin + '/__local-doc__/' + id; }
 
 /* ============================== 실시간 동기화 (Firebase Firestore) ==============================
@@ -420,9 +494,8 @@ let syncUnsub = null;
 let syncPushTimer = null;
 let syncApplyingRemote = false;
 
-const SYNC_BASELINE_KEY = 'hanoi_trip_sync_baseline_v1';
-function loadSyncBaseline() { return load(SYNC_BASELINE_KEY, {}); }
-function saveSyncBaseline(v) { save(SYNC_BASELINE_KEY, v); }
+function loadSyncBaseline() { return loadTrip(TRIP_BASE_KEYS.syncBaseline, {}); }
+function saveSyncBaseline(v) { saveTrip(TRIP_BASE_KEYS.syncBaseline, v); }
 
 /** local/remote 둘 다 있는 항목 중 어느 쪽을 쓸지 고름. baseline(마지막으로 동기화됐던 상태)과
     비교해서 바뀐 쪽을 우선하고, 둘 다 바뀌었으면(동시 편집) 이 기기 쪽을 우선함. */
@@ -478,10 +551,7 @@ function mergeRegionMapThreeWay(local, remote, baseline) {
   return result;
 }
 
-function getTripCode() {
-  const s = loadSettings();
-  return (s.tripCode || '').trim() || DEFAULT_TRIP_CODE;
-}
+function getTripCode() { return getActiveTripCode(); }
 
 function setSyncStatus(state) {
   const el = document.getElementById('sync-status');
@@ -514,13 +584,11 @@ function applyRemoteMerge(data) {
   const mergedItinerary = mergeArrayThreeWay(loadItinerary(), data.itinerary, baseline.itinerary);
   const mergedExpenses = mergeArrayThreeWay(loadExpenses(), data.expenses, baseline.expenses);
   const mergedReference = mergeRegionMapThreeWay(loadReference(), data.reference, baseline.reference);
-  const mergedVideos = mergeRegionMapThreeWay(loadVideos(), data.otherVideos, baseline.otherVideos);
   const mergedDocuments = mergeArrayThreeWay(loadDocuments(), data.documents, baseline.documents);
 
   const localChanged = JSON.stringify(mergedItinerary) !== JSON.stringify(loadItinerary())
     || JSON.stringify(mergedExpenses) !== JSON.stringify(loadExpenses())
     || JSON.stringify(mergedReference) !== JSON.stringify(loadReference())
-    || JSON.stringify(mergedVideos) !== JSON.stringify(loadVideos())
     || JSON.stringify(mergedDocuments) !== JSON.stringify(loadDocuments());
   // itinerary/expenses는 photos(기기 로컬 전용, 동기화 안 함)를 뺀 상태로 비교해야 함 —
   // 안 그러면 사진이 있는 항목이 하나라도 있으면 "서버가 뒤처졌다"고 매번 잘못 판단해서
@@ -528,14 +596,12 @@ function applyRemoteMerge(data) {
   const remoteStale = JSON.stringify(stripPhotosForSync(mergedItinerary)) !== JSON.stringify(data.itinerary || [])
     || JSON.stringify(stripPhotosForSync(mergedExpenses)) !== JSON.stringify(data.expenses || [])
     || JSON.stringify(mergedReference) !== JSON.stringify(data.reference || {})
-    || JSON.stringify(mergedVideos) !== JSON.stringify(data.otherVideos || {})
     || JSON.stringify(mergedDocuments) !== JSON.stringify(data.documents || []);
 
   syncApplyingRemote = true;
   saveItinerary(mergedItinerary);
   saveExpenses(mergedExpenses);
   saveReference(mergedReference);
-  saveVideos(mergedVideos);
   saveDocuments(mergedDocuments);
   syncApplyingRemote = false;
 
@@ -543,7 +609,6 @@ function applyRemoteMerge(data) {
     itinerary: data.itinerary || [],
     expenses: data.expenses || [],
     reference: data.reference || {},
-    otherVideos: data.otherVideos || {},
     documents: data.documents || [],
   });
 
@@ -551,7 +616,6 @@ function applyRemoteMerge(data) {
     renderItineraryGrid();
     renderExpenseTab();
     renderReferenceTab();
-    renderOtherTab();
     renderDocDrawer();
     document.getElementById('doc-drawer-tab').classList.add('sync-alert');
   }
@@ -601,7 +665,6 @@ function pushSyncNow() {
         itinerary: stripPhotosForSync(loadItinerary()),
         expenses: stripPhotosForSync(loadExpenses()),
         reference: loadReference(),
-        otherVideos: loadVideos(),
         documents: loadDocuments(),
       };
       lastPayload = payload;
@@ -862,28 +925,6 @@ document.getElementById('doc-viewer-delete-btn').addEventListener('click', (e) =
   closeModal('modal-doc-viewer');
 });
 
-function seedDefaultsIfEmpty() {
-  if (!loadReference()) {
-    saveReference({
-      hanoi: DEFAULT_REFERENCE.hanoi.map(item => ({ id: uid(), ...item })),
-      sapa: DEFAULT_REFERENCE.sapa.map(item => ({ id: uid(), ...item })),
-    });
-  }
-  if (!loadPhrases()) {
-    savePhrases(DEFAULT_PHRASES.map(cat => ({
-      id: uid(),
-      situation: cat.situation,
-      phrases: cat.phrases.map(([vi, ko, pron]) => ({ vi, ko, pron })),
-    })));
-  }
-  if (loadItinerary().length === 0) {
-    saveItinerary(SEED_ITINERARY.map(e => ({
-      id: uid(), vendor: '', place: '', mapUrl: '', expenseId: null,
-      photos: null, lodging: false, ...e,
-    })));
-  }
-}
-
 /* -------------------------------- 유틸 -------------------------------- */
 
 function uid() { return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8); }
@@ -918,8 +959,8 @@ function formatDateLabel(dateStr) {
 }
 
 function getTripDates() {
-  const s = loadSettings();
-  return dateRange(s.startDate, s.endDate);
+  const trip = getActiveTrip();
+  return dateRange(trip.startDate, trip.endDate);
 }
 
 function fmtAmount(n) {
@@ -1508,7 +1549,10 @@ async function refreshExpenseKrw(expenseId, forceRerender) {
 
 /* ============================== 투어 정보 탭 ============================== */
 
-/** 위시리스트 안의 고정 음식 카테고리(순서 고정). 명소(하노이/사파)와 달리 사용자가 임의로 늘릴 수 없음. */
+/** 하노이·사파 템플릿의 위시리스트 카테고리(라벨 복원용 참고 데이터). 더 이상 "고정 카테고리"가
+    아니라, 이제 위시리스트 카테고리는 여행마다 사용자가 "+"로 직접 등록하는 동적 목록임(loadReference()
+    의 __wishlistCategories 참고). 이 상수는 예전에 이 고정 카테고리로 이미 데이터가 쌓인 하노이·사파
+    여행의 라벨을 복원하는 데만 쓰임. */
 const REF_WISHLIST_CATEGORIES = [
   { key: 'wish_hanoi_food', label: '하노이 대표 음식' },
   { key: 'wish_sapa_food', label: '사파 추천 음식' },
@@ -1519,17 +1563,26 @@ const REF_WISHLIST_CATEGORIES = [
 ];
 /** 더 이상 쓰지 않는 위시리스트 카테고리. 안에 남은 항목이 없으면 저장소에서도 정리함. */
 const REF_REMOVED_WISHLIST_KEYS = ['wish_tips', 'wish_howto', 'wish_areas', 'wish_etc'];
-const REGION_LABELS = Object.assign(
-  { hanoi: '하노이', sapa: '사파' },
-  Object.fromEntries(REF_WISHLIST_CATEGORIES.map(c => [c.key, c.label]))
-);
-function regionLabel(key) { return REGION_LABELS[key] || key; }
+/** 명소(투어 정보 "명소" 그룹)의 하노이/사파 고정 라벨. 사용자가 "장소"란에 직접 입력한 커스텀
+    지역은 키 자체가 곧 라벨이 되므로 여기 없어도 됨. */
+const SPOT_REGION_LABELS = { hanoi: '하노이', sapa: '사파' };
+
+/** 위시리스트 카테고리(wish_*)는 현재 여행의 __wishlistCategories에서, 명소는 SPOT_REGION_LABELS나
+    키 자체에서 라벨을 찾음. */
+function regionLabel(key) {
+  if (SPOT_REGION_LABELS[key]) return SPOT_REGION_LABELS[key];
+  if (key && key.startsWith('wish_')) {
+    const found = (loadReference().__wishlistCategories || []).find(c => c.id === key);
+    if (found) return found.label;
+  }
+  return key;
+}
 function regionKeyForLabel(label) {
-  const found = Object.keys(REGION_LABELS).find(k => REGION_LABELS[k] === label);
+  const found = Object.keys(SPOT_REGION_LABELS).find(k => SPOT_REGION_LABELS[k] === label);
   return found || label;
 }
 
-/** 하노이/사파를 앞에 두고 그 외 커스텀 장소는 뒤에 붙이는 공통 정렬 규칙 (기타 탭 영상 등에서도 사용) */
+/** 하노이/사파를 앞에 두고 그 외 커스텀 장소는 뒤에 붙이는 공통 정렬 규칙 */
 function orderedRegionKeys(dataObj) {
   const keys = Object.keys(dataObj);
   const ordered = ['hanoi', 'sapa'].filter(k => keys.includes(k));
@@ -1538,16 +1591,34 @@ function orderedRegionKeys(dataObj) {
 }
 
 let refGroup = 'wishlist'; // 'wishlist' | 'spots'
-let refRegion = 'wish_hanoi_food';
+let refRegion = null;
 
-function getWishlistRegionKeys() { return REF_WISHLIST_CATEGORIES.map(c => c.key); }
+function getWishlistRegionKeys() {
+  return (loadReference().__wishlistCategories || []).map(c => c.id);
+}
 /** 명소는 하노이/사파를 기본으로 하되, "장소" 필드로 직접 입력한 커스텀 도시도 뒤에 붙음 */
 function getSpotRegionKeys() {
-  const keys = Object.keys(loadReference()).filter(k => !k.startsWith('wish_'));
+  const keys = Object.keys(loadReference()).filter(k => !k.startsWith('wish_') && k !== '__wishlistCategories');
   return orderedRegionKeys(Object.fromEntries(keys.map(k => [k, true])));
 }
 function getRegionKeys() {
   return refGroup === 'wishlist' ? getWishlistRegionKeys() : getSpotRegionKeys();
+}
+
+/** 위시리스트 카테고리를 사용자가 직접 추가/삭제 */
+function addWishlistCategory(label) {
+  const ref = loadReference();
+  const id = 'wish_' + uid();
+  ref.__wishlistCategories = [...(ref.__wishlistCategories || []), { id, label }];
+  ref[id] = [];
+  saveReference(ref);
+  return id;
+}
+function deleteWishlistCategory(key) {
+  const ref = loadReference();
+  ref.__wishlistCategories = (ref.__wishlistCategories || []).filter(c => c.id !== key);
+  delete ref[key];
+  saveReference(ref);
 }
 
 function renderRefGroupTabs() {
@@ -1566,10 +1637,15 @@ document.getElementById('ref-group-tabs').addEventListener('click', (e) => {
 
 function renderRegionTabs() {
   const keys = getRegionKeys();
-  if (!keys.includes(refRegion)) refRegion = keys[0] || 'hanoi';
-  document.getElementById('region-tabs').innerHTML = keys.map(k =>
+  if (!keys.includes(refRegion)) refRegion = keys[0] || null;
+  let html = keys.map(k =>
     `<button class="region-tab-btn${k === refRegion ? ' active' : ''}" data-region="${k}">${escapeHtml(regionLabel(k))}</button>`
   ).join('');
+  if (refGroup === 'wishlist') {
+    html += `<button type="button" class="region-tab-add-btn" id="btn-add-wishlist-category" title="카테고리 추가">+</button>`;
+    if (refRegion) html += `<button type="button" class="region-tab-add-btn" id="btn-delete-wishlist-category" title="카테고리 삭제">🗑</button>`;
+  }
+  document.getElementById('region-tabs').innerHTML = html;
 }
 
 /** 탭이 많아 가로 스크롤이 생기는 경우, 스와이프/클릭으로 바뀐 활성 탭이 항상 보이도록 스크롤 이동 */
@@ -1582,10 +1658,14 @@ function renderReferenceTab() {
   renderRefGroupTabs();
   renderRegionTabs();
   const ref = loadReference();
-  const items = ref[refRegion] || [];
   const isWishlist = refGroup === 'wishlist';
   const list = document.getElementById('ref-list-active');
-  list.innerHTML = items.map(item => `
+  if (isWishlist && !refRegion) {
+    list.innerHTML = '<div class="exp-empty">위시리스트 카테고리가 없어요. 위 + 버튼으로 추가해보세요.</div>';
+    return;
+  }
+  const items = ref[refRegion] || [];
+  list.innerHTML = items.length ? items.map(item => `
     <li class="ref-item${item.done ? ' done' : ''}" data-id="${item.id}">
       <div class="ref-item-row">
         ${isWishlist ? `<input type="checkbox" class="ref-item-check" data-id="${item.id}"${item.done ? ' checked' : ''} title="완료 체크">` : ''}
@@ -1593,10 +1673,28 @@ function renderReferenceTab() {
         <button type="button" class="icon-btn ref-item-map-btn" data-id="${item.id}" title="지도에서 보기">🗺️</button>
       </div>
       <div class="ref-item-desc">${escapeHtml(item.desc || '')}</div>
-    </li>`).join('');
+    </li>`).join('') : '<div class="exp-empty">아래 버튼으로 항목을 추가해보세요</div>';
 }
 
 document.getElementById('region-tabs').addEventListener('click', (e) => {
+  const addBtn = e.target.closest('#btn-add-wishlist-category');
+  if (addBtn) {
+    const name = prompt('새 위시리스트 카테고리 이름을 입력하세요 (예: 디저트, 기념품)');
+    if (!name || !name.trim()) return;
+    refRegion = addWishlistCategory(name.trim());
+    renderReferenceTab();
+    scrollActiveTabIntoView('region-tabs');
+    return;
+  }
+  const delBtn = e.target.closest('#btn-delete-wishlist-category');
+  if (delBtn) {
+    if (!refRegion) return;
+    if (!confirm(`"${regionLabel(refRegion)}" 카테고리를 삭제할까요? 안에 있는 항목도 모두 사라집니다.`)) return;
+    deleteWishlistCategory(refRegion);
+    refRegion = getWishlistRegionKeys()[0] || null;
+    renderReferenceTab();
+    return;
+  }
   const btn = e.target.closest('.region-tab-btn');
   if (!btn) return;
   refRegion = btn.dataset.region;
@@ -1672,7 +1770,10 @@ document.getElementById('ref-list-active').addEventListener('click', (e) => {
   const li = e.target.closest('.ref-item');
   if (li) openRefModal(refRegion, li.dataset.id);
 });
-document.getElementById('btn-add-ref').addEventListener('click', () => openRefModal(refRegion, null));
+document.getElementById('btn-add-ref').addEventListener('click', () => {
+  if (refGroup === 'wishlist' && !refRegion) { toast('먼저 위시리스트 카테고리를 추가해주세요'); return; }
+  openRefModal(refRegion, null);
+});
 
 const REF_KNOWN_TYPES = ['맛집', '명소', '마사지'];
 document.getElementById('ref-type').addEventListener('change', (e) => {
@@ -1685,12 +1786,12 @@ function openRefModal(region, itemId) {
   document.getElementById('ref-delete-btn').classList.toggle('hidden', !itemId);
   document.getElementById('ref-photo-status').textContent = '';
 
-  const isWishlist = REF_WISHLIST_CATEGORIES.some(c => c.key === region);
+  const isWishlist = !!region && region.startsWith('wish_');
   document.getElementById('ref-region-select-wrap').classList.toggle('hidden', !isWishlist);
   document.getElementById('ref-region-input-wrap').classList.toggle('hidden', isWishlist);
   if (isWishlist) {
     document.getElementById('ref-region-select').innerHTML =
-      REF_WISHLIST_CATEGORIES.map(c => `<option value="${c.key}">${escapeHtml(c.label)}</option>`).join('');
+      getWishlistRegionKeys().map(k => `<option value="${k}">${escapeHtml(regionLabel(k))}</option>`).join('');
     document.getElementById('ref-region-select').value = region;
   } else {
     document.getElementById('ref-region-list').innerHTML =
@@ -1803,6 +1904,13 @@ let phraseIndex = 0;
 
 function renderPhrasesTab() {
   const cats = loadPhrases();
+  if (!cats.length) {
+    document.getElementById('phrase-nav-label').textContent = '';
+    document.getElementById('phrase-prev-btn').disabled = true;
+    document.getElementById('phrase-next-btn').disabled = true;
+    document.getElementById('phrase-category-view').innerHTML = '<div class="tl-empty">이 여행에는 등록된 회화 모음이 없어요.</div>';
+    return;
+  }
   if (phraseIndex > cats.length - 1) phraseIndex = cats.length - 1;
   if (phraseIndex < 0) phraseIndex = 0;
   const cat = cats[phraseIndex];
@@ -1828,191 +1936,6 @@ function shiftPhraseIndex(delta) {
 document.getElementById('phrase-prev-btn').addEventListener('click', () => shiftPhraseIndex(-1));
 document.getElementById('phrase-next-btn').addEventListener('click', () => shiftPhraseIndex(1));
 attachSwipeNav(document.getElementById('tab-phrases'), shiftPhraseIndex);
-
-/* ============================== 기타(영상) 탭 ============================== */
-
-function parseVideoEmbed(url) {
-  const u = (url || '').trim();
-  if (!u) return null;
-  if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(u)) return { type: 'file', src: u };
-  const yt = /(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/.exec(u);
-  if (yt) return { type: 'youtube', id: yt[1] };
-  const gd = /drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?id=)([a-zA-Z0-9_-]+)/.exec(u);
-  if (gd) return { type: 'gdrive', id: gd[1] };
-  return null;
-}
-
-let videoRegion = 'hanoi';
-
-function getVideoRegionKeys() {
-  return orderedRegionKeys(loadVideos());
-}
-
-function renderVideoRegionTabs() {
-  const keys = getVideoRegionKeys();
-  if (!keys.includes(videoRegion)) videoRegion = keys[0] || 'hanoi';
-  document.getElementById('video-region-tabs').innerHTML =
-    keys.map(k => `<button class="region-tab-btn${k === videoRegion ? ' active' : ''}" data-region="${k}">${escapeHtml(regionLabel(k))}</button>`).join('')
-    + `<button type="button" class="region-tab-add-btn" id="btn-add-video-region" title="장소 추가">+</button>`;
-}
-
-function renderOtherTab() {
-  renderVideoRegionTabs();
-  const videos = loadVideos();
-  const items = videos[videoRegion] || [];
-  const list = document.getElementById('other-video-list');
-  list.innerHTML = items.length
-    ? items.map(v => {
-      const embed = parseVideoEmbed(v.url);
-      let embedHtml;
-      if (embed && embed.type === 'file') {
-        embedHtml = `<video src="${escapeHtml(embed.src)}" controls preload="metadata"></video>`
-          + `<button type="button" class="video-fullscreen-btn" data-fallback="${escapeHtml(embed.src)}" title="전체화면">⛶</button>`;
-      } else if (embed && embed.type === 'youtube') {
-        embedHtml = `<div class="video-thumb" data-yt-id="${embed.id}" data-title="${escapeHtml(v.title || '')}">
-          <img src="https://img.youtube.com/vi/${embed.id}/hqdefault.jpg" alt="${escapeHtml(v.title || '')}" loading="lazy">
-          <div class="video-play-btn">▶</div>
-        </div>`;
-      } else if (embed && embed.type === 'gdrive') {
-        embedHtml = `<iframe src="https://drive.google.com/file/d/${embed.id}/preview" title="${escapeHtml(v.title || '')}" loading="lazy" allow="autoplay" allowfullscreen></iframe>`
-          + `<button type="button" class="video-fullscreen-btn" data-fallback="https://drive.google.com/file/d/${embed.id}/view" title="전체화면">⛶</button>`;
-      } else {
-        embedHtml = `<div class="video-broken">유효한 영상 링크가 아닙니다</div>`;
-      }
-      return `<div class="video-card">
-        <div class="video-embed${v.orientation === 'portrait' ? ' portrait' : ''}">${embedHtml}</div>
-        <div class="video-title-row" data-id="${v.id}">
-          <span class="video-title">${escapeHtml(v.title || '')}</span>
-          <button type="button" class="icon-btn video-edit-btn" data-id="${v.id}" title="수정">✏️</button>
-        </div>
-      </div>`;
-    }).join('')
-    : '<div class="exp-empty">아래 버튼으로 영상을 추가해보세요</div>';
-}
-
-document.getElementById('video-region-tabs').addEventListener('click', (e) => {
-  const addBtn = e.target.closest('#btn-add-video-region');
-  if (addBtn) {
-    const name = prompt('새 장소(대주제) 이름을 입력하세요');
-    if (!name || !name.trim()) return;
-    const key = regionKeyForLabel(name.trim());
-    const videos = loadVideos();
-    if (!videos[key]) { videos[key] = []; saveVideos(videos); }
-    videoRegion = key;
-    renderOtherTab();
-    scrollActiveTabIntoView('video-region-tabs');
-    return;
-  }
-  const btn = e.target.closest('.region-tab-btn');
-  if (!btn) return;
-  videoRegion = btn.dataset.region;
-  renderOtherTab();
-  scrollActiveTabIntoView('video-region-tabs');
-});
-
-/** 하노이/사파(및 추가된 장소) 사이를 화면 스와이프로 이동 */
-function goToAdjacentVideoRegion(delta) {
-  const keys = getVideoRegionKeys();
-  const idx = keys.indexOf(videoRegion);
-  const nextIdx = idx + delta;
-  if (nextIdx < 0 || nextIdx >= keys.length) return;
-  videoRegion = keys[nextIdx];
-  renderOtherTab();
-  scrollActiveTabIntoView('video-region-tabs');
-  playSwipeAnim(document.getElementById('other-video-list'), delta);
-}
-attachSwipeNav(document.getElementById('tab-other'), goToAdjacentVideoRegion);
-
-document.getElementById('other-video-list').addEventListener('click', (e) => {
-  const fsBtn = e.target.closest('.video-fullscreen-btn');
-  if (fsBtn) {
-    const wrap = fsBtn.closest('.video-embed');
-    const media = wrap && wrap.querySelector('iframe, video');
-    const fallbackUrl = fsBtn.dataset.fallback;
-    const openFallback = () => { if (fallbackUrl) window.open(fallbackUrl, '_blank'); };
-    const fn = media && (media.requestFullscreen || media.webkitRequestFullscreen || media.webkitEnterFullscreen);
-    if (fn) {
-      try {
-        Promise.resolve(fn.call(media)).catch(openFallback);
-      } catch (err) {
-        openFallback();
-      }
-    } else {
-      openFallback();
-    }
-    return;
-  }
-  const btn = e.target.closest('.video-edit-btn');
-  if (btn) { openVideoModal(videoRegion, btn.dataset.id); return; }
-  const thumb = e.target.closest('.video-thumb');
-  if (thumb) {
-    const id = thumb.dataset.ytId;
-    const title = thumb.dataset.title;
-    thumb.outerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1" title="${title}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`
-      + `<button type="button" class="video-fullscreen-btn" data-fallback="https://www.youtube.com/watch?v=${id}" title="전체화면">⛶</button>`;
-  }
-});
-document.getElementById('btn-add-video').addEventListener('click', () => openVideoModal(videoRegion, null));
-
-function openVideoModal(region, videoId) {
-  const isNew = !videoId;
-  document.getElementById('video-modal-title').textContent = isNew ? '영상 추가' : '영상 수정';
-  document.getElementById('video-id').value = videoId || '';
-  document.getElementById('video-region-original').value = region;
-  document.getElementById('video-delete-btn').classList.toggle('hidden', isNew);
-
-  document.getElementById('video-region-list').innerHTML =
-    getVideoRegionKeys().map(k => `<option value="${escapeHtml(regionLabel(k))}">`).join('');
-
-  let v = { title: '', url: '' };
-  if (!isNew) v = (loadVideos()[region] || []).find(x => x.id === videoId) || v;
-
-  document.getElementById('video-region-input').value = regionLabel(region);
-  document.getElementById('video-title').value = v.title || '';
-  document.getElementById('video-url').value = v.url || '';
-  document.getElementById('video-orientation').value = v.orientation === 'portrait' ? 'portrait' : 'landscape';
-  openModal('modal-video');
-}
-
-document.getElementById('video-cancel-btn').addEventListener('click', () => closeModal('modal-video'));
-
-document.getElementById('video-save-btn').addEventListener('click', () => {
-  const id = document.getElementById('video-id').value;
-  const originalRegion = document.getElementById('video-region-original').value;
-  const regionLabelInput = document.getElementById('video-region-input').value.trim();
-  if (!regionLabelInput) { toast('장소를 입력해주세요'); return; }
-  const region = regionKeyForLabel(regionLabelInput);
-  const title = document.getElementById('video-title').value.trim();
-  const url = document.getElementById('video-url').value.trim();
-  const orientation = document.getElementById('video-orientation').value === 'portrait' ? 'portrait' : 'landscape';
-  if (!url) { toast('영상 링크를 입력해주세요'); return; }
-  if (!parseVideoEmbed(url)) { toast('유튜브 링크 또는 mp4/webm 파일 링크를 입력해주세요'); return; }
-
-  const videos = loadVideos();
-  if (id && originalRegion && originalRegion !== region) {
-    videos[originalRegion] = (videos[originalRegion] || []).filter(x => x.id !== id);
-  }
-  videos[region] = videos[region] || [];
-  let v = videos[region].find(x => x.id === id);
-  if (!v) { v = { id: uid() }; videos[region].push(v); }
-  Object.assign(v, { title, url, orientation });
-  saveVideos(videos);
-  videoRegion = region;
-  renderOtherTab();
-  closeModal('modal-video');
-  toast('영상을 저장했습니다');
-});
-
-document.getElementById('video-delete-btn').addEventListener('click', () => {
-  const id = document.getElementById('video-id').value;
-  const region = document.getElementById('video-region-original').value;
-  const videos = loadVideos();
-  videos[region] = (videos[region] || []).filter(x => x.id !== id);
-  saveVideos(videos);
-  renderOtherTab();
-  closeModal('modal-video');
-  toast('영상을 삭제했습니다');
-});
 
 /* ============================== 사진 분석 (OCR + Groq) ============================== */
 
@@ -2183,7 +2106,7 @@ async function reverseGeocode(lat, lon) {
   } catch (e) { return null; }
 }
 
-const RECEIPT_ANALYSIS_PROMPT = `당신은 베트남(하노이/사파) 여행 중 촬영하거나 캡처한 사진을 분석하는 도우미입니다. 사진은 영수증, 입장권/탑승권, 예약 확인서, 스크린샷, 간판, 메뉴판 등일 수 있고 한국어/영어/베트남어가 섞여 있을 수 있습니다.
+const RECEIPT_ANALYSIS_PROMPT = `당신은 해외여행 중 촬영하거나 캡처한 사진을 분석하는 도우미입니다. 사진은 영수증, 입장권/탑승권, 예약 확인서, 스크린샷, 간판, 메뉴판 등일 수 있고 한국어/영어/현지어가 섞여 있을 수 있습니다.
 사진이 여러 장 함께 주어질 수 있습니다. 다음 두 경우를 사진 내용을 보고 직접 판단해서 구분하세요:
 - 품목이 많아 영수증 하나가 여러 장에 나뉘어 찍힌 경우(예: 앞부분 사진엔 품목 일부만 있고 합계가 없는데, 뒷부분 사진에 나머지 품목과 최종 합계가 있는 경우) — 이때는 전체를 하나의 영수증으로 보고, 모든 사진의 품목을 중복 없이 합쳐 items에 담고, amount에는 최종 합계를 "한 번만" 반영하세요. 사진마다 부분 합계를 계산해서 서로 더하면 안 됩니다.
 - 서로 다른 별개의 영수증 여러 장인 경우 — 각 영수증의 금액을 모두 더한 총합을 amount에 넣고, 품목도 전부 합쳐서 items에 넣으세요.
@@ -2983,7 +2906,7 @@ async function writeItineraryToSheet(accessToken) {
       const createRes = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ properties: { title: '하노이 사파 여행 일정' }, sheets: [{ properties: { title: '일정' } }] }),
+        body: JSON.stringify({ properties: { title: getActiveTrip().name + ' 여행 일정' }, sheets: [{ properties: { title: '일정' } }] }),
       });
       const createJson = await createRes.json();
       if (!createRes.ok) throw new Error((createJson.error && createJson.error.message) || '시트 생성 실패');
@@ -3072,7 +2995,7 @@ async function exportTripToExcel() {
   const sumSheet = wb.addWorksheet('요약');
   sumSheet.columns = [{ width: 16 }, { width: 16 }, { width: 12 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }];
   sumSheet.mergeCells('A1:C1');
-  sumSheet.getCell('A1').value = '하노이·사파 여행 요약';
+  sumSheet.getCell('A1').value = getActiveTrip().name + ' 여행 요약';
   sumSheet.getCell('A1').font = { bold: true, size: 16 };
   sumSheet.getCell('A2').value = `여행 기간: ${dates[0] || ''} ~ ${dates[dates.length - 1] || ''}`;
   sumSheet.getCell('A2').font = { color: { argb: 'FF767676' } };
@@ -3187,7 +3110,8 @@ async function exportTripToExcel() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `하노이사파여행_${(dates[0] || '').replaceAll('-', '')}_${(dates[dates.length - 1] || '').replaceAll('-', '')}.xlsx`;
+  const tripNameSlug = getActiveTrip().name.replace(/[^\w가-힣]+/g, '');
+  a.download = `${tripNameSlug}여행_${(dates[0] || '').replaceAll('-', '')}_${(dates[dates.length - 1] || '').replaceAll('-', '')}.xlsx`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -3204,17 +3128,110 @@ document.getElementById('btn-export-excel').addEventListener('click', () => {
 document.getElementById('settings-translate-lang').innerHTML =
   TRANSLATE_SOURCE_LANGS.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
 
+/* -------- 내 여행 (멀티 여행 전환/생성/참여) -------- */
+
+function renderTripList() {
+  const registry = loadTripRegistry();
+  const activeCode = getActiveTripCode();
+  document.getElementById('trip-list').innerHTML = registry.map(t => `
+    <div class="trip-list-item${t.code === activeCode ? ' active' : ''}">
+      <div class="trip-list-info">
+        <div class="trip-list-name">${escapeHtml(t.name)}</div>
+        <div class="trip-list-dates">${escapeHtml(t.startDate)} ~ ${escapeHtml(t.endDate)}</div>
+      </div>
+      ${t.code === activeCode
+        ? '<span class="trip-active-badge">사용 중</span>'
+        : `<button type="button" class="btn small ghost trip-switch-btn" data-code="${escapeHtml(t.code)}">전환</button>
+           <button type="button" class="icon-btn trip-delete-btn" data-code="${escapeHtml(t.code)}" title="삭제">🗑</button>`}
+    </div>`).join('');
+  document.getElementById('current-trip-code-display').value = activeCode;
+}
+
+/** 여행 전환: 저장된 데이터는 전환하는 순간 자동으로 저장되어 있던 그대로 다시 나타남(여행마다
+    독립된 localStorage 네임스페이스를 쓰기 때문). 화면 상태(보던 날짜/카테고리 등)만 초기화함. */
+function switchActiveTrip(code) {
+  setActiveTripCode(code);
+  viewDate = computeInitialViewDate();
+  refGroup = 'wishlist';
+  refRegion = null;
+  phraseIndex = 0;
+  document.title = getActiveTrip().name + ' 여행 플래너';
+  renderItineraryGrid();
+  renderExpenseTab();
+  renderReferenceTab();
+  renderPhrasesTab();
+  renderDocDrawer();
+  attachSyncListener();
+  renderTripList();
+}
+
+document.getElementById('trip-list').addEventListener('click', (e) => {
+  const switchBtn = e.target.closest('.trip-switch-btn');
+  if (switchBtn) { switchActiveTrip(switchBtn.dataset.code); toast('여행을 전환했습니다'); return; }
+  const delBtn = e.target.closest('.trip-delete-btn');
+  if (delBtn) {
+    const code = delBtn.dataset.code;
+    const registry = loadTripRegistry();
+    const trip = registry.find(t => t.code === code);
+    if (!confirm(`"${trip ? trip.name : code}" 여행을 목록에서 삭제할까요? 이 기기에 저장된 데이터도 함께 삭제됩니다.`)) return;
+    saveTripRegistry(registry.filter(t => t.code !== code));
+    Object.values(TRIP_BASE_KEYS).forEach(base => localStorage.removeItem(tripStorageKey(code, base)));
+    renderTripList();
+    toast('삭제했습니다');
+  }
+});
+
+document.getElementById('btn-add-trip').addEventListener('click', () => {
+  const name = prompt('새 여행 이름을 입력하세요 (예: 오사카 2027)');
+  if (!name || !name.trim()) return;
+  const startDate = prompt('여행 시작일을 입력하세요 (예: 2027-03-10)', todayStr());
+  if (!startDate) return;
+  const endDate = prompt('여행 종료일을 입력하세요 (예: 2027-03-15)', startDate);
+  if (!endDate) return;
+  const code = generateTripCode(name.trim());
+  const registry = loadTripRegistry();
+  registry.push({ code, name: name.trim(), startDate, endDate, createdAt: Date.now() });
+  saveTripRegistry(registry);
+  switchActiveTrip(code);
+  toast('새 여행을 만들었습니다');
+});
+
+document.getElementById('btn-join-trip').addEventListener('click', () => {
+  const code = prompt('동행이 알려준 여행 코드를 입력하세요');
+  if (!code || !code.trim()) return;
+  const trimmed = code.trim();
+  const registry = loadTripRegistry();
+  if (!registry.some(t => t.code === trimmed)) {
+    const name = prompt('이 여행을 부를 이름을 입력하세요', trimmed);
+    registry.push({ code: trimmed, name: (name || trimmed).trim(), startDate: todayStr(), endDate: todayStr(), createdAt: Date.now() });
+    saveTripRegistry(registry);
+  }
+  switchActiveTrip(trimmed);
+  toast('여행에 참여했습니다. 날짜가 맞지 않으면 아래에서 고쳐주세요');
+});
+
+document.getElementById('btn-copy-trip-code').addEventListener('click', async () => {
+  const code = document.getElementById('current-trip-code-display').value;
+  try {
+    await navigator.clipboard.writeText(code);
+    toast('코드를 복사했습니다');
+  } catch (e) {
+    toast('자동 복사에 실패했습니다. 직접 선택해서 복사해주세요');
+  }
+});
+
 function openSettingsModal() {
   const s = loadSettings();
-  document.getElementById('settings-start-date').value = s.startDate;
-  document.getElementById('settings-end-date').value = s.endDate;
+  const trip = getActiveTrip();
+  document.getElementById('settings-start-date').value = trip.startDate;
+  document.getElementById('settings-end-date').value = trip.endDate;
   document.getElementById('settings-groq-key').value = s.groqApiKey || '';
   document.getElementById('settings-groq-model').value = (s.groqVisionModel && !DEPRECATED_GROQ_VISION_MODELS.includes(s.groqVisionModel)) ? s.groqVisionModel : '';
   document.getElementById('settings-translate-lang').value = s.translateSourceLang || '베트남어';
   document.getElementById('settings-google-client-id').value = s.googleClientId || '';
-  document.getElementById('settings-trip-code').value = s.tripCode || '';
   document.getElementById('settings-export-code').value = '';
   document.getElementById('settings-import-code').value = '';
+  renderTripList();
   openModal('modal-settings');
 }
 document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
@@ -3222,26 +3239,27 @@ document.getElementById('settings-cancel-btn').addEventListener('click', () => c
 
 document.getElementById('settings-save-btn').addEventListener('click', () => {
   const s = loadSettings();
-  s.startDate = document.getElementById('settings-start-date').value || s.startDate;
-  s.endDate = document.getElementById('settings-end-date').value || s.endDate;
   s.groqApiKey = document.getElementById('settings-groq-key').value.trim();
   s.groqVisionModel = document.getElementById('settings-groq-model').value.trim();
   s.translateSourceLang = document.getElementById('settings-translate-lang').value;
   s.googleClientId = document.getElementById('settings-google-client-id').value.trim();
-  const prevTripCode = getTripCode();
-  s.tripCode = document.getElementById('settings-trip-code').value.trim();
   saveSettings(s);
+
+  const registry = loadTripRegistry();
+  const trip = registry.find(t => t.code === getActiveTripCode());
+  if (trip) {
+    trip.startDate = document.getElementById('settings-start-date').value || trip.startDate;
+    trip.endDate = document.getElementById('settings-end-date').value || trip.endDate;
+    saveTripRegistry(registry);
+  }
+  document.title = getActiveTrip().name + ' 여행 플래너';
   renderItineraryGrid();
   renderExpenseTab();
-  if (getTripCode() !== prevTripCode) attachSyncListener();
   closeModal('modal-settings');
   toast('설정을 저장했습니다');
 });
 
 document.getElementById('btn-sync-push-now').addEventListener('click', () => {
-  const s = loadSettings();
-  s.tripCode = document.getElementById('settings-trip-code').value.trim();
-  saveSettings(s);
   attachSyncListener();
   toast('업로드 중...');
   pushSyncNow()
@@ -3249,7 +3267,7 @@ document.getElementById('btn-sync-push-now').addEventListener('click', () => {
     .catch(() => toast('업로드에 실패했습니다. 잠시 후 다시 시도해주세요'));
 });
 
-/* -------- 설정 내보내기/가져오기 코드 (기기 간 공유용, 깃허브에는 저장되지 않음) -------- */
+/* -------- 설정 내보내기/가져오기 코드 (API 키 등을 다른 기기로 공유, 깃허브에는 저장되지 않음) -------- */
 
 function toBase64Unicode(str) {
   return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))));
@@ -3262,13 +3280,10 @@ document.getElementById('settings-export-btn').addEventListener('click', () => {
   const s = loadSettings();
   const current = {
     ...s,
-    startDate: document.getElementById('settings-start-date').value || s.startDate,
-    endDate: document.getElementById('settings-end-date').value || s.endDate,
     groqApiKey: document.getElementById('settings-groq-key').value.trim(),
     groqVisionModel: document.getElementById('settings-groq-model').value.trim(),
     translateSourceLang: document.getElementById('settings-translate-lang').value,
     googleClientId: document.getElementById('settings-google-client-id').value.trim(),
-    tripCode: document.getElementById('settings-trip-code').value.trim(),
   };
   const code = toBase64Unicode(JSON.stringify(current));
   const ta = document.getElementById('settings-export-code');
@@ -3299,30 +3314,24 @@ document.getElementById('settings-import-btn').addEventListener('click', () => {
     toast('코드를 읽을 수 없습니다. 정확히 복사했는지 확인해주세요');
     return;
   }
-  const prevTripCode = getTripCode();
   const s = Object.assign(loadSettings(), parsed);
   saveSettings(s);
-  document.getElementById('settings-start-date').value = s.startDate;
-  document.getElementById('settings-end-date').value = s.endDate;
   document.getElementById('settings-groq-key').value = s.groqApiKey || '';
   document.getElementById('settings-groq-model').value = (s.groqVisionModel && !DEPRECATED_GROQ_VISION_MODELS.includes(s.groqVisionModel)) ? s.groqVisionModel : '';
   document.getElementById('settings-translate-lang').value = s.translateSourceLang || '베트남어';
   document.getElementById('settings-google-client-id').value = s.googleClientId || '';
-  document.getElementById('settings-trip-code').value = s.tripCode || '';
   document.getElementById('settings-import-code').value = '';
   renderItineraryGrid();
   renderExpenseTab();
-  if (getTripCode() !== prevTripCode) attachSyncListener();
   toast('설정을 가져와서 바로 적용했습니다');
 });
 
 /* ================================ 초기화 ================================ */
 
-seedDefaultsIfEmpty();
+document.title = getActiveTrip().name + ' 여행 플래너';
 renderItineraryGrid();
 renderExpenseTab();
 renderReferenceTab();
 renderPhrasesTab();
-renderOtherTab();
 renderDocDrawer();
 initSync();
